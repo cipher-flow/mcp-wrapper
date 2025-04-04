@@ -59,6 +59,7 @@
     <div class="forms-container">
         <form id="serverForm">
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
+            <textarea id="abiInput" placeholder="Enter ABI (JSON format)..."></textarea>
             <button type="submit">Create Server</button>
         </form>
     </div>
@@ -100,12 +101,16 @@
 
         // Handle server creation
         const serverForm = document.getElementById('serverForm');
+        const serverNameInput = document.getElementById('serverNameInput');
+        const abiInput = document.getElementById('abiInput');
+
         serverForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const serverName = document.getElementById('serverNameInput').value.trim();
+            const serverName = serverNameInput.value.trim();
+            const abi = abiInput.value.trim();
 
             try {
-                const response = await fetch(`/server/${serverName}`);
+                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}`);
                 const data = await response.json();
 
                 // Close existing connection if any

@@ -58,6 +58,29 @@ class EthereumService {
       throw new Error(`Failed to get ERC20 balance: ${error.message}`);
     }
   }
+
+  async callContractFunction(contractAddress, functionName, params) {
+    try {
+      await this.validateConnection();
+
+      if (!ethers.isAddress(contractAddress)) {
+        throw new Error('Invalid contract address');
+      }
+
+      const contract = new ethers.Contract(contractAddress, [], this.provider);
+      const result = await contract[functionName](...params);
+
+      // Handle different return types
+      if (Array.isArray(result)) {
+        return result.map(r => r.toString ? r.toString() : r);
+      } else if (result?.toString) {
+        return result.toString();
+      }
+      return result;
+    } catch (error) {
+      throw new Error(`Failed to call contract function ${functionName}: ${error.message}`);
+    }
+  }
 }
 
 export const ethereumService = new EthereumService();

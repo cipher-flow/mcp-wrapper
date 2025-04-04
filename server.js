@@ -8,72 +8,130 @@ import { abiParser } from "./abiParser.js";
 const app = express();
 
 // Factory function to create configured MCP server instances
-function createMcpServer(name) {
+function createMcpServer(name, abiInfo) {
+  console.log(`Creating new MCP server instance for ${name}`);
   const server = new McpServer({
-    name: name || "Echo Server",
+    name: name || "MCP Wrapper Server",
     version: "1.0.0"
   });
+  console.log(`Server instance created for ${name}`);
 
-  // Set up echo resource
-  server.resource(
-    `echo-${name}`,
-    new ResourceTemplate("echo://{message}", { list: undefined }),
-    async (uri, { message }) => ({
-      contents: [
-        {
-          uri: uri.href,
-          text: `Resource echo: ${message.split("").reverse().join("")}`,
-        },
-      ],
-    })
-  );
+  // Add dynamic tools for each ABI function
+  if (!abiInfo || !Array.isArray(abiInfo)) {
+    console.log(`Invalid ABI info for ${name}`);
+    return server;
+  };
+  abiInfo.forEach((item) => {
+    if (item.type === 'function') {
+      const paramsSchema = {};
+      const params = [];
 
-  // Set up echo tool
-  server.tool(
-    `echo-${name}`,
-    { message: z.string() },
-    async ({ message }) => ({
-      content: [{ type: "text", text: `Tool echo: ${message.split('').reverse().join('')}` }]
-    })
-  );
+      // Build Zod schema for each input parameter
+      item.inputs?.forEach((input) => {
+        let schema;
+        if (input.type.includes('uint') || input.type.includes('int')) {
+          schema = z.string().regex(/^\d+$/, 'Must be a number');
+        } else if (input.type === 'address') {
+          schema = z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid address');
+        } else if (input.type === 'bool') {
+          schema = z.boolean();
+        } else if (input.type === 'string') {
+          schema = z.string();
+        } else {
+          schema = z.string();
+        }
 
-  // Set up Ethereum ERC20 balance tool
-  server.tool(
-    `erc20-balance-${name}`,
-    {
-      contractAddress: z.string(),
-      walletAddress: z.string()
-    },
-    async ({ contractAddress, walletAddress }) => {
-      try {
-        const result = await ethereumService.getERC20Balance(contractAddress, walletAddress);
-        return {
-          content: [{
-            type: "text",
-            text: `Balance: ${result.balance} ${result.symbol}`
-          }]
-        };
-      } catch (error) {
-        return {
-          content: [{
-            type: "text",
-            text: `Error: ${error.message}`
-          }]
-        };
-      }
+        paramsSchema[input.name || `param${params.length}`] = schema;
+        params.push(input.name || `param${params.length}`);
+      });
+      // print tool name
+      console.log(`Adding tool ${item.name} for ${name}`);
+      // Add tool for this function
+      server.tool(
+        `${item.name}-${name}`,
+        paramsSchema,
+        async (args) => {
+          try {
+            const result = await ethereumService.callContractFunction(
+              args.contractAddress,
+              item.name,
+              params.map(p => args[p])
+            );
+            return {
+              content: [{
+                type: "text",
+                text: `Function ${item.name} result: ${JSON.stringify(result)}`
+              }]
+            };
+          } catch (error) {
+            return {
+              content: [{
+                type: "text",
+                text: `Error calling ${item.name}: ${error.message}`
+              }]
+            };
+          }
+        }
+      );
     }
+  });
+
+  // Resource for full ABI
+  console.log(`Registering ABI resource for ${name}`);
+  server.resource(
+    `abi-${name}`,
+    new ResourceTemplate("abi://{name}", { list: undefined }),
+    async () => ({
+      contents: [{
+        uri: `abi://${name}`,
+        text: JSON.stringify(abiInfo)
+      }]
+    })
   );
 
-  // Set up echo prompt
+  // Resources for each function
+  abiInfo.filter(item => item.type === 'function').forEach(item => {
+    console.log(`Registering resource for function ${item.name} on server ${name}`);
+    server.resource(
+      `abi-function-${item.name}-${name}`,
+      new ResourceTemplate(`abi-function://{name}/${item.name}`, { list: undefined }),
+      async () => ({
+        contents: [{
+          uri: `abi-function://${name}/${item.name}`,
+          text: JSON.stringify(item)
+        }]
+      })
+    );
+  });
+
+  // Prompt templates for common contract interactions
+  console.log(`Registering contract info prompt for ${name}`);
   server.prompt(
-    "echo",
-    { message: z.string() },
-    ({ message }) => ({
+    `contract-info-${name}`,
+    {},
+    () => ({
       messages: [{
         role: "user",
         content: {
           type: "text",
-          text: `Please process this message: ${message}`
+          text: `Here is the ABI for contract ${name}: ${JSON.stringify(abiInfo)}. ` +
+                `What functions are available and what do they do?`
+        }
+      }]
+    })
+  );
+
+  console.log(`Registering contract function prompt for ${name}`);
+  server.prompt(
+    `contract-function-${name}`,
+    { functionName: z.string() },
+    ({ functionName }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Explain how to use the ${functionName} function from contract ${name}. ` +
+                `Include parameter types and expected return values.`
         }
       }]
     })
@@ -82,31 +140,7 @@ function createMcpServer(name) {
   return server;
 }
 
-// Handle ABI storage
-app.post('/store-abi', async (req, res) => {
-  try {
-    const { abi, id } = req.body;
-    if (!abi || !id) {
-      return res.status(400).json({ error: 'Both abi and id are required' });
-    }
 
-    const abiInfo = abiParser.parseAndStore(abi, id);
-    res.json({ success: true, abiInfo });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Handle ABI retrieval
-app.get('/get-abi/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const abiInfo = abiParser.getABI(id);
-    res.json({ success: true, abiInfo });
-  } catch (error) {
-    res.status(404).json({ error: error.message });
-  }
-});
 
 // Endpoint to get active servers
 app.get('/active-servers', (req, res) => {
@@ -121,14 +155,33 @@ const servers = {};
 const transports = {};
 
 // Endpoint to get or create server instance and return connection URL
-app.get("/server/:name", (req, res) => {
+app.get("/server/:name", async (req, res) => {
   const { name } = req.params;
+  const { abi } = req.query;
   console.log(`===> Received request for server with name: ${name}`);
+  // print abi
+  console.log(`===> ABI: ${abi}`);
+
+  if (!name) {
+    return res.status(400).json({ error: 'Server name is required' });
+  }
 
   // Create or get server instance for this name
   if (!servers[name]) {
     console.log(`===> Creating new server instance for name: ${name}`);
-    servers[name] = createMcpServer(name);
+
+    let abiInfo = []; // Default to empty array
+    if (abi) {
+      try {
+        const parsed = abiParser.parseAndStore(abi);
+        abiInfo = parsed.raw; // Get the raw ABI array
+      } catch (error) {
+        return res.status(400).json({ error: `Invalid ABI: ${error.message}` });
+      }
+    }
+    // print abiInfo
+    console.log(`===> ABI Info: ${JSON.stringify(abiInfo)}`);
+    servers[name] = createMcpServer(name, abiInfo);
   }
 
   res.json({
@@ -143,6 +196,7 @@ app.get("/sse/:name", async (req, res) => {
   console.log(`===> Received SSE connection request for name: ${name}`);
 
   if (!servers[name]) {
+    console.log(`===> Server instance not found for name: ${name}`);
     return res.status(404).send(`No server found for name ${name}`);
   }
 

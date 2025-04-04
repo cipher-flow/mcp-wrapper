@@ -2,16 +2,15 @@ import { ethers } from 'ethers';
 
 export class ABIParser {
   constructor() {
-    this.abis = new Map(); // Store ABIs with unique identifiers
+    this.abi = null; // Store single ABI
   }
 
   /**
    * Validate and store ABI
    * @param {string|Array} abi - The ABI to parse (can be JSON string or array)
-   * @param {string} id - Unique identifier for this ABI
    * @returns {Object} Parsed ABI information
    */
-  parseAndStore(abi, id) {
+  parseAndStore(abi) {
     try {
       // Parse ABI (handles both string and array input)
       const parsedABI = typeof abi === 'string' ? JSON.parse(abi) : abi;
@@ -24,31 +23,28 @@ export class ABIParser {
       const functions = parsedABI.filter(item => item.type === 'function');
       const events = parsedABI.filter(item => item.type === 'event');
 
-      const abiInfo = {
+      this.abi = {
         raw: parsedABI,
         functions: this._processFunctions(functions),
         events: this._processEvents(events),
         interface: new ethers.Interface(parsedABI)
       };
 
-      // Store with the given ID
-      this.abis.set(id, abiInfo);
-      return abiInfo;
+      return this.abi;
     } catch (error) {
       throw new Error(`Failed to parse ABI: ${error.message}`);
     }
   }
 
   /**
-   * Get stored ABI by ID
-   * @param {string} id - The identifier for the stored ABI
+   * Get stored ABI
    * @returns {Object} The stored ABI information
    */
-  getABI(id) {
-    if (!this.abis.has(id)) {
-      throw new Error(`No ABI found with ID: ${id}`);
+  getABI() {
+    if (!this.abi) {
+      throw new Error('No ABI stored');
     }
-    return this.abis.get(id);
+    return this.abi;
   }
 
   /**
@@ -81,19 +77,10 @@ export class ABIParser {
   }
 
   /**
-   * Get all stored ABI IDs
-   * @returns {Array} List of stored ABI IDs
+   * Remove stored ABI
    */
-  getAllABIIds() {
-    return Array.from(this.abis.keys());
-  }
-
-  /**
-   * Remove stored ABI by ID
-   * @param {string} id - The identifier for the stored ABI
-   */
-  removeABI(id) {
-    this.abis.delete(id);
+  removeABI() {
+    this.abi = null;
   }
 }
 
