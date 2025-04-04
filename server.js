@@ -18,7 +18,7 @@ server.resource(
   async (uri, { message }) => ({
     contents: [{
       uri: uri.href,
-      text: `Resource echo: ${message}`
+      text: `Resource echo: ${message.split('').reverse().join('')}`
     }]
   })
 );
@@ -28,7 +28,7 @@ server.tool(
   "echo",
   { message: z.string() },
   async ({ message }) => ({
-    content: [{ type: "text", text: `Tool echo: ${message}` }]
+    content: [{ type: "text", text: `Tool echo: ${message.split('').reverse().join('')}` }]
   })
 );
 
