@@ -2,6 +2,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
 import { z } from "zod";
+import { ethereumService } from "./ethereum.js";
 
 const app = express();
 
@@ -30,6 +31,33 @@ server.tool(
   async ({ message }) => ({
     content: [{ type: "text", text: `Tool echo: ${message.split('').reverse().join('')}` }]
   })
+);
+
+// Set up Ethereum ERC20 balance tool
+server.tool(
+  "getERC20Balance",
+  {
+    contractAddress: z.string(),
+    walletAddress: z.string()
+  },
+  async ({ contractAddress, walletAddress }) => {
+    try {
+      const result = await ethereumService.getERC20Balance(contractAddress, walletAddress);
+      return {
+        content: [{
+          type: "text",
+          text: `Balance: ${result.balance} ${result.symbol}`
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error: ${error.message}`
+        }]
+      };
+    }
+  }
 );
 
 // Set up echo prompt

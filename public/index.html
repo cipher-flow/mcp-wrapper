@@ -11,6 +11,11 @@
             margin: 0 auto;
             padding: 20px;
         }
+        .forms-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
         #messages {
             border: 1px solid #ccc;
             padding: 10px;
@@ -46,12 +51,19 @@
     </style>
 </head>
 <body>
-    <h1>MCP Echo Client</h1>
+    <h1>MCP Echo & ERC20 Client</h1>
     <div id="messages"></div>
-    <form id="messageForm">
-        <input type="text" id="messageInput" placeholder="Type your message..." required>
-        <button type="submit">Send</button>
-    </form>
+    <div class="forms-container">
+        <form id="messageForm">
+            <input type="text" id="messageInput" placeholder="Type your message..." required>
+            <button type="submit">Send Echo</button>
+        </form>
+        <form id="erc20Form">
+            <input type="text" id="contractAddress" placeholder="ERC20 Contract Address" required>
+            <input type="text" id="walletAddress" placeholder="Wallet Address" required>
+            <button type="submit">Get Balance</button>
+        </form>
+    </div>
 
     <script>
         const messagesDiv = document.getElementById('messages');
@@ -80,6 +92,38 @@
             console.error('SSE Error:', error);
             eventSource.close();
         };
+
+        // Handle ERC20 balance query
+        const erc20Form = document.getElementById('erc20Form');
+        erc20Form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const contractAddress = document.getElementById('contractAddress').value.trim();
+            const walletAddress = document.getElementById('walletAddress').value.trim();
+            if (!contractAddress || !walletAddress || !sessionId) return;
+
+            try {
+                const response = await fetch(`/messages?sessionId=${sessionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'tool',
+                        name: 'getERC20Balance',
+                        params: { contractAddress, walletAddress }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to send message');
+                }
+
+                document.getElementById('contractAddress').value = '';
+                document.getElementById('walletAddress').value = '';
+            } catch (error) {
+                console.error('Error querying ERC20 balance:', error);
+            }
+        });
 
         // Handle message submission
         messageForm.addEventListener('submit', async (e) => {
