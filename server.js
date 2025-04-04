@@ -3,6 +3,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
 import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
+import { abiParser } from "./abiParser.js";
 
 const app = express();
 
@@ -80,6 +81,32 @@ function createMcpServer(name) {
 
   return server;
 }
+
+// Handle ABI storage
+app.post('/store-abi', async (req, res) => {
+  try {
+    const { abi, id } = req.body;
+    if (!abi || !id) {
+      return res.status(400).json({ error: 'Both abi and id are required' });
+    }
+
+    const abiInfo = abiParser.parseAndStore(abi, id);
+    res.json({ success: true, abiInfo });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Handle ABI retrieval
+app.get('/get-abi/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const abiInfo = abiParser.getABI(id);
+    res.json({ success: true, abiInfo });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
 
 // Endpoint to get active servers
 app.get('/active-servers', (req, res) => {
