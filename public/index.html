@@ -52,6 +52,16 @@
 </head>
 <body>
     <h1>MCP Echo & ERC20 Client</h1>
+    <div id="serverList">
+        <h2>Active Servers</h2>
+        <ul id="servers"></ul>
+    </div>
+    <div class="forms-container">
+        <form id="serverForm">
+            <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
+            <button type="submit">Create Server</button>
+        </form>
+    </div>
     <div id="messages"></div>
     <div class="forms-container">
         <form id="messageForm">
@@ -69,11 +79,51 @@
         const messagesDiv = document.getElementById('messages');
         const messageForm = document.getElementById('messageForm');
         const messageInput = document.getElementById('messageInput');
+        const serversList = document.getElementById('servers');
+        let activeServers = [];
+        let eventSource = null;
 
-        // Connect to SSE endpoint
-        const eventSource = new EventSource('/sse');
-        let sessionId = null;
+        // Function to fetch and display active servers
+        async function fetchActiveServers() {
+            try {
+                const response = await fetch('/active-servers');
+                const data = await response.json();
+                activeServers = data.servers;
+                updateServerList();
+            } catch (error) {
+                console.error('Error fetching active servers:', error);
+            }
+        }
 
+        // Fetch active servers on page load
+        fetchActiveServers();
+
+        // Handle server creation
+        const serverForm = document.getElementById('serverForm');
+        serverForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const serverName = document.getElementById('serverNameInput').value.trim();
+
+            try {
+                const response = await fetch(`/server/${serverName}`);
+                const data = await response.json();
+
+                // Close existing connection if any
+                if (eventSource) {
+                    eventSource.close();
+                }
+
+                // Connect to new SSE endpoint
+                eventSource = new EventSource(data.url);
+                let sessionId = null;
+
+                // Add server to active list
+                activeServers.push(serverName);
+                updateServerList();
+              } catch (error) {
+                console.error('Error creating server:', error);
+              }
+        });
         eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.sessionId && !sessionId) {
@@ -91,6 +141,21 @@
         eventSource.onerror = (error) => {
             console.error('SSE Error:', error);
             eventSource.close();
+            removeServer(serverName);
+        };
+
+        function updateServerList() {
+            serversList.innerHTML = '';
+            activeServers.forEach(server => {
+                const li = document.createElement('li');
+                li.textContent = server;
+                serversList.appendChild(li);
+            });
+        }
+
+        function removeServer(serverName) {
+            activeServers = activeServers.filter(name => name !== serverName);
+            updateServerList();
         };
 
         // Handle ERC20 balance query

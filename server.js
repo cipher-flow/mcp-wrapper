@@ -81,18 +81,42 @@ function createMcpServer(name) {
   return server;
 }
 
+// Endpoint to get active servers
+app.get('/active-servers', (req, res) => {
+  res.json({
+    servers: Object.keys(servers)
+  });
+});
+
 // Store active servers by name
 const servers = {};
 // Store active SSE transports by name
 const transports = {};
 
+// Endpoint to get or create server instance and return connection URL
+app.get("/server/:name", (req, res) => {
+  const { name } = req.params;
+  console.log(`===> Received request for server with name: ${name}`);
+
+  // Create or get server instance for this name
+  if (!servers[name]) {
+    console.log(`===> Creating new server instance for name: ${name}`);
+    servers[name] = createMcpServer(name);
+  }
+
+  res.json({
+    url: `/sse/${name}`,
+    messageUrl: `/messages/${name}`
+  });
+});
+
 // SSE endpoint with name parameter
 app.get("/sse/:name", async (req, res) => {
   const { name } = req.params;
-  console.log(`===> Received request for SSE with name: ${name}`);
-  // Create or get server instance for this name
+  console.log(`===> Received SSE connection request for name: ${name}`);
+
   if (!servers[name]) {
-    servers[name] = createMcpServer(name);
+    return res.status(404).send(`No server found for name ${name}`);
   }
 
   const transport = new SSEServerTransport(`/messages/${name}`, res);
@@ -103,8 +127,6 @@ app.get("/sse/:name", async (req, res) => {
     delete transports[name][transport.sessionId];
     if (Object.keys(transports[name]).length === 0) {
       delete transports[name];
-      // Optional: cleanup server instance if needed
-      // delete servers[name];
     }
   });
 
