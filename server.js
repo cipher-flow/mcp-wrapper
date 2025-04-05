@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
+import { inviteCodeManager } from "./inviteCode.js";
 
 const app = express();
 
@@ -57,6 +58,30 @@ function createMcpServer(name, abiInfo) {
         },
         async (args) => {
           try {
+            // get invite code from name(name-inviteCode)
+            const inviteCode = name.split('-').slice(-1)[0];
+            console.log(`Invite code for ${name}: ${inviteCode}`);
+            // Validate invite code
+            if (!inviteCodeManager.validateCode(inviteCode)) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Invalid invite code"
+                }]
+              };
+            }
+            // Check access limit
+            if (!inviteCodeManager.canAccessServer(inviteCode)) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Invite code has reached maximum access limit"
+                }]
+              };
+            }
+            // Increment access count for tool usage
+            inviteCodeManager.incrementAccess(inviteCode);
+
             const result = await ethereumService.callContractFunction(
               args.contractAddress,
               args.functionName,
@@ -169,15 +194,35 @@ const transports = {};
 
 // Endpoint to get or create server instance and return connection URL
 app.get("/server/:name", async (req, res) => {
-  const { name } = req.params;
-  const { abi } = req.query;
+  let { name } = req.params;
+  const { abi, inviteCode } = req.query;
   console.log(`===> Received request for server with name: ${name}`);
-  // print abi
-  console.log(`===> ABI: ${abi}`);
-
+  // concat name with name-inviteCode
+  name = `${name}-${inviteCode}`;
+  console.log(`===> Server name with invite code: ${name}`);
   if (!name) {
     return res.status(400).json({ error: 'Server name is required' });
   }
+
+  if (!inviteCode) {
+    return res.status(400).json({ error: 'Invite code is required' });
+  }
+
+  // Validate invite code
+  if (!inviteCodeManager.validateCode(inviteCode)) {
+    return res.status(403).json({ error: 'Invalid invite code' });
+  }
+
+  // Check if this is a new server creation
+  if (!servers[name] && !inviteCodeManager.canCreateServer(inviteCode)) {
+    return res.status(403).json({ error: 'Invite code has reached maximum server limit' });
+  }
+
+  // Check access limit
+  if (!inviteCodeManager.canAccessServer(inviteCode)) {
+    return res.status(403).json({ error: 'Invite code has reached maximum access limit' });
+  }
+
 
   // Create or get server instance for this name
   if (!servers[name]) {
@@ -189,6 +234,7 @@ app.get("/server/:name", async (req, res) => {
         const parsed = abiParser.parseAndStore(abi);
         abiInfo = parsed.raw; // Get the raw ABI array
         storage.saveServer(name, abiInfo); // Persist to storage
+        inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
       } catch (error) {
         return res.status(400).json({ error: `Invalid ABI: ${error.message}` });
       }

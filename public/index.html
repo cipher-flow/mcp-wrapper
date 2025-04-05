@@ -52,6 +52,7 @@
     </div>
     <div class="forms-container">
         <form id="serverForm">
+            <input type="text" id="inviteCodeInput" placeholder="Enter invite code..." required>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
             <textarea id="abiInput" placeholder="Enter ABI (JSON format)..."></textarea>
             <button type="submit">Create Server</button>
@@ -91,8 +92,14 @@
             const abi = abiInput.value.trim();
 
             try {
-                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}`);
+                const inviteCode = document.getElementById('inviteCodeInput').value.trim();
+                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}`);
                 const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
 
                 // Close existing connection if any
                 if (eventSource) {
