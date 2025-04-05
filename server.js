@@ -4,6 +4,7 @@ import express from "express";
 import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
+import { storage } from "./storage.js";
 
 const app = express();
 
@@ -156,6 +157,13 @@ app.get('/active-servers', (req, res) => {
 
 // Store active servers by name
 const servers = {};
+// Initialize servers from storage on startup
+for (const name of storage.getAllServers()) {
+  const serverData = storage.getServer(name);
+  if (serverData?.abi) {
+    servers[name] = createMcpServer(name, serverData.abi);
+  }
+}
 // Store active SSE transports by name
 const transports = {};
 
@@ -180,6 +188,7 @@ app.get("/server/:name", async (req, res) => {
       try {
         const parsed = abiParser.parseAndStore(abi);
         abiInfo = parsed.raw; // Get the raw ABI array
+        storage.saveServer(name, abiInfo); // Persist to storage
       } catch (error) {
         return res.status(400).json({ error: `Invalid ABI: ${error.message}` });
       }
