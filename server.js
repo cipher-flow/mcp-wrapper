@@ -49,13 +49,18 @@ function createMcpServer(name, abiInfo) {
       // Add tool for this function
       server.tool(
         `${item.name}-${name}`,
-        paramsSchema,
+        {
+          ...paramsSchema,
+          contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address'),
+          functionName: z.string().min(1, 'Function name is required')
+        },
         async (args) => {
           try {
             const result = await ethereumService.callContractFunction(
               args.contractAddress,
-              item.name,
-              params.map(p => args[p])
+              args.functionName,
+              params.map(p => args[p]),
+              abiInfo
             );
             return {
               content: [{

@@ -59,7 +59,7 @@ class EthereumService {
     }
   }
 
-  async callContractFunction(contractAddress, functionName, params) {
+  async callContractFunction(contractAddress, functionName, params, abi = []) {
     try {
       await this.validateConnection();
 
@@ -67,7 +67,7 @@ class EthereumService {
         throw new Error('Invalid contract address');
       }
 
-      const contract = new ethers.Contract(contractAddress, [], this.provider);
+      const contract = new ethers.Contract(contractAddress, abi, this.provider);
       const result = await contract[functionName](...params);
 
       // Handle different return types
