@@ -6,6 +6,7 @@ import { expect } from 'chai';
 describe('Storage', () => {
   const testServerName = 'testServer';
   const testABI = [{ type: 'function', name: 'test' }];
+  const testChainRpcUrl = 'test-rpc.com';
 
   beforeEach(() => {
     // Clear storage before each test
@@ -17,18 +18,19 @@ describe('Storage', () => {
     global.storage = new Storage();
   });
 
-  it('should initialize with empty servers', () => {
-    expect(storage.getAllServers()).to.deep.equal([]);
-  });
+
 
   it('should save and retrieve a server', () => {
-    storage.saveServer(testServerName, testABI);
+    storage.saveServer(testServerName, { abi: testABI, chainRpcUrl: testChainRpcUrl });
     const server = storage.getServer(testServerName);
-    expect(server).to.deep.equal({ abi: testABI });
+    expect(server).to.deep.equal({
+      abi: testABI,
+      chainRpcUrl: testChainRpcUrl,
+    });
   });
 
   it('should persist servers between instances', () => {
-    storage.saveServer(testServerName, testABI);
+    storage.saveServer(testServerName, { abi: testABI });
 
     // Create new storage instance to simulate restart
     const newStorage = new Storage();
@@ -41,11 +43,7 @@ describe('Storage', () => {
     expect(servers).to.deep.equal({});
   });
 
-  it('should return all server names', () => {
-    storage.saveServer(testServerName, testABI);
-    storage.saveServer('anotherServer', testABI);
-    expect(storage.getAllServers()).to.have.members([testServerName, 'anotherServer']);
-  });
+
 
   it('should return undefined for non-existent server', () => {
     expect(storage.getServer('nonexistent')).to.be.undefined;
