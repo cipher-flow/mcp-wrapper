@@ -41,10 +41,6 @@ class Storage {
     return this.servers[name];
   }
 
-  getAllServers() {
-    return Object.keys(this.servers);
-  }
-
   _persistServers() {
     try {
       fs.writeFileSync(SERVERS_FILE, JSON.stringify(this.servers, null, 2));

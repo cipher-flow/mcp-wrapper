@@ -12,12 +12,10 @@ const app = new Hono();
 
 // Factory function to create configured MCP server instances
 function createMcpServer(name, abiInfo) {
-  console.log(`Creating new MCP server instance for ${name}`);
   const server = new McpServer({
     name: name || "MCP Wrapper Server",
     version: "1.0.0"
   });
-  console.log(`Server instance created for ${name}`);
 
   // Add dynamic tools for each ABI function
   if (!abiInfo || !Array.isArray(abiInfo)) {
@@ -47,8 +45,7 @@ function createMcpServer(name, abiInfo) {
         paramsSchema[input.name || `param${params.length}`] = schema;
         params.push(input.name || `param${params.length}`);
       });
-      // print tool name
-      console.log(`Adding tool ${item.name} for ${name}`);
+
       // Add tool for this function
       server.tool(
         `${item.name}-${name}`,
@@ -61,7 +58,6 @@ function createMcpServer(name, abiInfo) {
           try {
             // get invite code from name(name-inviteCode)
             const inviteCode = name.split('-').slice(-1)[0];
-            console.log(`Invite code for ${name}: ${inviteCode}`);
             // Validate invite code
             if (!inviteCodeManager.validateCode(inviteCode)) {
               return {
@@ -83,7 +79,6 @@ function createMcpServer(name, abiInfo) {
             // Increment access count for tool usage
             inviteCodeManager.incrementAccess(inviteCode);
             // Call the contract function
-            console.log(`Calling function ${item.name} on contract ${args.contractAddress}`);
             const result = await ethereumService.callContractFunction(
               name,
               args.contractAddress,
@@ -152,7 +147,6 @@ function createMcpServer(name, abiInfo) {
     })
   );
 
-  console.log(`Registering contract function prompt for ${name}`);
   server.prompt(
     `contract-function-${name}`,
     { functionName: z.string() },
@@ -196,26 +190,13 @@ app.get('/active-servers', (c) => {
       chainRpcUrl: serverData?.chainRpcUrl || 'Not configured'
     };
   });
-  // print filteredServers
   console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
   return c.json({
-    servers: serverDetails
+    servers: serverDetails,
   });
 });
 
-// Store active servers by name
-const servers = {};
-// Initialize servers from storage on startup
-for (const name of storage.getAllServers()) {
-  const serverData = storage.getServer(name);
-  if (serverData?.abi) {
-    servers[name] = createMcpServer(name, serverData.abi);
-    if (serverData.chainRpcUrl) {
-      ethereumService.setRpcUrl(name, serverData.chainRpcUrl);
-    }
-  }
-}
-// Store active SSE transports by name
+// Initialize SSE transports by name
 const transports = {};
 
 // Endpoint to get or create server instance and return connection URL
@@ -225,9 +206,10 @@ app.get("/server/:name", async (c) => {
   const inviteCode = c.req.query('inviteCode');
   const chainRpcUrl = c.req.query('chainRpcUrl');
   console.log(`===> Received request for server with name: ${name}`);
-  // concat name with name-inviteCode
+  // 连接 name 和 inviteCode
   name = `${name}-${inviteCode}`;
   console.log(`===> Server name with invite code: ${name}`);
+
   if (!name) {
     return c.json({ error: 'Server name is required' }, 400);
   }
@@ -241,39 +223,37 @@ app.get("/server/:name", async (c) => {
     return c.json({ error: 'Invalid invite code' }, 403);
   }
 
-  // Check if this is a new server creation
-  if (!servers[name] && !inviteCodeManager.canCreateServer(inviteCode)) {
+  // Check if server exists and if new server can be created
+  const serverExists = inviteCodeManager.isServerExist(inviteCode, name);
+  if (!serverExists && !inviteCodeManager.canCreateServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
-  // Check access limit
+  // 检查访问限制
   if (!inviteCodeManager.canAccessServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
-  // Create or get server instance for this name
-  if (!servers[name]) {
+  // Create new server instance if it doesn't exist
+  if (!serverExists) {
     console.log(`===> Creating new server instance for name: ${name}`);
 
-    let abiInfo = []; // Default to empty array
-    if (abi) {
-      if (!chainRpcUrl) {
-        return c.json({ error: 'Chain RPC URL is required when creating a new server' }, 400);
-      }
-      try {
-        const parsed = abiParser.parseAndStore(abi);
-        abiInfo = parsed.raw; // Get the raw ABI array
-        storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
-        ethereumService.setRpcUrl(name, chainRpcUrl); // Set RPC URL for the server
-        inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
-      } catch (error) {
-        return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
-      }
+    if (!chainRpcUrl) {
+      return c.json({ error: 'Chain RPC URL is required when creating a new server' }, 400);
     }
-    // print abiInfo
-    console.log(`===> ABI Info: ${JSON.stringify(abiInfo)}`);
-    servers[name] = createMcpServer(name, abiInfo);
+    try {
+      const parsed = abiParser.parseAndStore(abi);
+      const abiInfo = parsed.raw; // Get the raw ABI array
+      storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
+      inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
+    } catch (error) {
+      return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
+    }
   }
+
+  // Create or get server instance for this name
+  const serverData = storage.getServer(name);
+  const server = createMcpServer(name, serverData?.abi || []);
 
   return c.json({
     url: `/sse/${name}`,
@@ -286,7 +266,8 @@ app.get("/sse/:name", async (c) => {
   const name = c.req.param('name');
   console.log(`===> Received SSE connection request for name: ${name}`);
 
-  if (!servers[name]) {
+  const inviteCode = name.split('-').slice(-1)[0];
+  if (!inviteCodeManager.isServerExist(inviteCode, name)) {
     console.log(`===> Server instance not found for name: ${name}`);
     return c.text(`No server found for name ${name}`, 404);
   }
@@ -304,11 +285,12 @@ app.get("/sse/:name", async (c) => {
     }
   });
 
-  console.log(`Active servers: ${Object.keys(servers).join(', ')}`);
-  console.log(`Active transports for ${name}`);
+  const serverData = storage.getServer(name);
+  const server = createMcpServer(name, serverData?.abi || []);
 
-  await servers[name].connect(transport);
-  return c.body(null); // 返回已处理的响应
+  console.log(`Active transports for ${name}`);
+  await server.connect(transport);
+  return c.body(null); // Return processed response
 });
 
 // Message endpoint with name parameter
