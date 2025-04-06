@@ -57,9 +57,12 @@ class InviteCodeManager {
 
   addServerToCode(code, serverName) {
     if (!this.canCreateServer(code)) return false;
-    this.codes[code].servers.push(serverName);
-    this._persistCodes();
-    return true;
+    if (!this.codes[code].servers.includes(serverName)) {
+      this.codes[code].servers.push(serverName);
+      this._persistCodes();
+      return true;
+    }
+    return false;
   }
 
   incrementAccess(code) {
