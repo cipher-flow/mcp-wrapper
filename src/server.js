@@ -311,7 +311,11 @@ app.post("/messages/:name", async (c) => {
 
 // Simple ping endpoint for API testing
 app.get('/ping', (c) => {
-  return c.text('pong');
+  // 确保返回的是标准 Response 对象
+  return new Response('pong', {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain' }
+  });
 });
 
 // Serve static files

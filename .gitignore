@@ -26,3 +26,4 @@ Thumbs.db
 
 # storage
 storage
+.wrangler/tmp/*
