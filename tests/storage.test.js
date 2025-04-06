@@ -1,4 +1,4 @@
-import { storage, Storage } from './storage.js';
+import { storage, Storage } from '../src/storage.js';
 import fs from 'fs';
 import path from 'path';
 import { expect } from 'chai';

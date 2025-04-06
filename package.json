@@ -1,12 +1,12 @@
 {
-  "name": "model-context-protocol",
+  "name": "MCP Wrapper",
   "version": "1.0.0",
-  "description": "A simple model context protocol tool with SSE support",
-  "main": "server.js",
+  "description": "Paste Solidity ABI and get a running MCP(Model Context Protocol) server!",
+  "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "test": "npx mocha --experimental-specifier-resolution=node"
   },
   "dependencies": {

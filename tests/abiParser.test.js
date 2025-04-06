@@ -1,4 +1,4 @@
-import { abiParser } from './abiParser.js';
+import { abiParser } from '../src/abiParser.js';
 import { expect } from 'chai';
 
 describe('ABIParser', () => {

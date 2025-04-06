@@ -1,4 +1,4 @@
-import { storage } from '../storage.js';
+import { storage } from './storage.js';
 
 // RPC URL configuration manager
 class RpcConfigManager {
