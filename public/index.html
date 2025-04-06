@@ -46,13 +46,18 @@
 </head>
 <body>
     <h1>MCP Wrapper</h1>
-    <div id="serverList">
-        <h2>Active Servers</h2>
-        <ul id="servers"></ul>
-    </div>
     <div class="forms-container">
+        <div id="serverList">
+            <h2>Active Servers</h2>
+            <ul id="servers"></ul>
+        </div>
+        <form id="fetchServersForm">
+            <input type="text" id="fetchInviteCodeInput" placeholder="Enter invite code to fetch servers..." required>
+            <button type="submit">Fetch Active Servers</button>
+        </form>
+        <h2>Create MCP Server with ABI</h2>
         <form id="serverForm">
-            <input type="text" id="inviteCodeInput" placeholder="Enter invite code..." required>
+            <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
             <textarea id="abiInput" placeholder="Enter ABI (JSON format)..."></textarea>
             <button type="submit">Create Server</button>
@@ -61,25 +66,61 @@
 
 
     <script>
-
         const serversList = document.getElementById('servers');
         let activeServers = [];
         let eventSource = null;
 
         // Function to fetch and display active servers
-        async function fetchActiveServers() {
+        async function fetchActiveServers(inviteCode) {
             try {
-                const response = await fetch('/active-servers');
+                if (!inviteCode) {
+                    alert('Invite code is required');
+                    return;
+                }
+                const response = await fetch(`/active-servers?inviteCode=${encodeURIComponent(inviteCode)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                if (!data.servers || !Array.isArray(data.servers)) {
+                    alert('Invalid server data received from server');
+                    return;
+                }
                 activeServers = data.servers;
                 updateServerList();
             } catch (error) {
-                console.error('Error fetching active servers:', error);
+                alert(`Failed to fetch active servers: ${error.message}`);
             }
         }
 
-        // Fetch active servers on page load
-        fetchActiveServers();
+        function updateServerList() {
+            serversList.innerHTML = '';
+            if (!activeServers || activeServers.length === 0) {
+                const li = document.createElement('li');
+                li.textContent = 'No active servers';
+                serversList.appendChild(li);
+                return;
+            }
+            activeServers.forEach(server => {
+                const li = document.createElement('li');
+                li.textContent = server;
+                serversList.appendChild(li);
+            });
+        }
+
+        // Handle fetch servers form submission
+        const fetchServersForm = document.getElementById('fetchServersForm');
+        fetchServersForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // This prevents the form from submitting traditionally
+            const inviteCode = document.getElementById('fetchInviteCodeInput').value.trim();
+            await fetchActiveServers(inviteCode);
+            // Clear the input after successful fetch
+            document.getElementById('fetchInviteCodeInput').value = '';
+        });
 
         // Handle server creation
         const serverForm = document.getElementById('serverForm');
@@ -90,9 +131,9 @@
             e.preventDefault();
             const serverName = serverNameInput.value.trim();
             const abi = abiInput.value.trim();
+            const inviteCode = document.getElementById('createInviteCodeInput').value.trim();
 
             try {
-                const inviteCode = document.getElementById('inviteCodeInput').value.trim();
                 const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}`);
                 const data = await response.json();
 
@@ -108,31 +149,20 @@
 
                 // Connect to new SSE endpoint
                 eventSource = new EventSource(data.url);
-                let sessionId = null;
 
                 // Add server to active list
                 activeServers.push(serverName);
                 updateServerList();
-              } catch (error) {
-                console.error('Error creating server:', error);
-              }
+
+                // Add error handler for event source
+                eventSource.onerror = (error) => {
+                    eventSource.close();
+                    removeServer(serverName);
+                };
+            } catch (error) {
+                alert('Failed to create server');
+            }
         });
-
-
-        eventSource.onerror = (error) => {
-            console.error('SSE Error:', error);
-            eventSource.close();
-            removeServer(serverName);
-        };
-
-        function updateServerList() {
-            serversList.innerHTML = '';
-            activeServers.forEach(server => {
-                const li = document.createElement('li');
-                li.textContent = server;
-                serversList.appendChild(li);
-            });
-        }
 
         function removeServer(serverName) {
             activeServers = activeServers.filter(name => name !== serverName);

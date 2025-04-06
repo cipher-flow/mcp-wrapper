@@ -81,7 +81,8 @@ function createMcpServer(name, abiInfo) {
             }
             // Increment access count for tool usage
             inviteCodeManager.incrementAccess(inviteCode);
-
+            // Call the contract function
+            console.log(`Calling function ${item.name} on contract ${args.contractAddress}`);
             const result = await ethereumService.callContractFunction(
               args.contractAddress,
               args.functionName,
@@ -108,7 +109,6 @@ function createMcpServer(name, abiInfo) {
   });
 
   // Resource for full ABI
-  console.log(`Registering ABI resource for ${name}`);
   server.resource(
     `abi-${name}`,
     new ResourceTemplate("abi://{name}", { list: undefined }),
@@ -122,7 +122,6 @@ function createMcpServer(name, abiInfo) {
 
   // Resources for each function
   abiInfo.filter(item => item.type === 'function').forEach(item => {
-    console.log(`Registering resource for function ${item.name} on server ${name}`);
     server.resource(
       `abi-function-${item.name}-${name}`,
       new ResourceTemplate(`abi-function://{name}/${item.name}`, { list: undefined }),
@@ -136,7 +135,6 @@ function createMcpServer(name, abiInfo) {
   });
 
   // Prompt templates for common contract interactions
-  console.log(`Registering contract info prompt for ${name}`);
   server.prompt(
     `contract-info-${name}`,
     {},
@@ -175,8 +173,23 @@ function createMcpServer(name, abiInfo) {
 
 // Endpoint to get active servers
 app.get('/active-servers', (req, res) => {
+  const { inviteCode } = req.query;
+
+  if (!inviteCode) {
+    return res.status(400).json({ error: "Invite code is required" });
+  }
+
+  if (!inviteCodeManager.validateCode(inviteCode)) {
+    return res.status(403).json({ error: "Invalid invite code" });
+  }
+
+  // Get servers directly from invite code info
+  const codeInfo = inviteCodeManager.getCodeInfo(inviteCode);
+  const filteredServers = codeInfo?.servers || [];
+  // print filteredServers
+  console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
   res.json({
-    servers: Object.keys(servers)
+    servers: filteredServers,
   });
 });
 
@@ -294,5 +307,5 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`MCP Echo Server running on port ${PORT}`);
+  console.log(`Express Server running on port ${PORT}`);
 });
