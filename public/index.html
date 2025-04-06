@@ -59,6 +59,7 @@
         <form id="serverForm">
             <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
+            <input type="text" id="chainRpcUrlInput" placeholder="Enter Chain RPC URL..." required>
             <textarea id="abiInput" placeholder="Enter ABI (JSON format)..."></textarea>
             <button type="submit">Create Server</button>
         </form>
@@ -108,8 +109,13 @@
             activeServers.forEach(server => {
                 const li = document.createElement('li');
                 const baseUrl = window.location.origin;
-                const serverUrl = `${baseUrl}/sse/${server}`;
-                li.textContent = serverUrl;
+                const serverUrl = `${baseUrl}/sse/${server.name}`;
+                const chainRpcUrl = server.chainRpcUrl || 'Not configured';
+                li.innerHTML = `
+                    <div><strong>Server Name:</strong> ${server.name}</div>
+                    <div><strong>Server URL:</strong> ${serverUrl}</div>
+                    <div><strong>Chain RPC URL:</strong> ${chainRpcUrl}</div>
+                `;
                 serversList.appendChild(li);
             });
         }
@@ -134,9 +140,10 @@
             const serverName = serverNameInput.value.trim();
             const abi = abiInput.value.trim();
             const inviteCode = document.getElementById('createInviteCodeInput').value.trim();
+            const chainRpcUrl = document.getElementById('chainRpcUrlInput').value.trim();
 
             try {
-                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}`);
+                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}&chainRpcUrl=${encodeURIComponent(chainRpcUrl)}`);
                 const data = await response.json();
 
                 if (data.error) {
@@ -152,9 +159,8 @@
                 // Connect to new SSE endpoint
                 eventSource = new EventSource(data.url);
 
-                // Add server to active list
-                activeServers.push(serverName);
-                updateServerList();
+                // Fetch updated server list after creation
+                await fetchActiveServers(inviteCode);
 
                 // Add error handler for event source
                 eventSource.onerror = (error) => {

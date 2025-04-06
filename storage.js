@@ -28,8 +28,12 @@ class Storage {
     return {};
   }
 
-  saveServer(name, abi) {
-    this.servers[name] = { abi };
+  // Store server configuration with rpcUrl and abi
+  saveServer(name, serverInfo) {
+    this.servers[name] = {
+      chainRpcUrl: serverInfo.chainRpcUrl,
+      abi: serverInfo.abi
+    };
     this._persistServers();
   }
 

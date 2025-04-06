@@ -84,6 +84,7 @@ function createMcpServer(name, abiInfo) {
             // Call the contract function
             console.log(`Calling function ${item.name} on contract ${args.contractAddress}`);
             const result = await ethereumService.callContractFunction(
+              name,
               args.contractAddress,
               args.functionName,
               params.map(p => args[p]),
@@ -186,10 +187,18 @@ app.get('/active-servers', (req, res) => {
   // Get servers directly from invite code info
   const codeInfo = inviteCodeManager.getCodeInfo(inviteCode);
   const filteredServers = codeInfo?.servers || [];
+  // Get server details including RPC URLs
+  const serverDetails = filteredServers.map(name => {
+    const serverData = storage.getServer(name);
+    return {
+      name,
+      chainRpcUrl: serverData?.chainRpcUrl || 'Not configured'
+    };
+  });
   // print filteredServers
   console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
   res.json({
-    servers: filteredServers,
+    servers: serverDetails,
   });
 });
 
@@ -200,6 +209,9 @@ for (const name of storage.getAllServers()) {
   const serverData = storage.getServer(name);
   if (serverData?.abi) {
     servers[name] = createMcpServer(name, serverData.abi);
+    if (serverData.chainRpcUrl) {
+      ethereumService.setRpcUrl(name, serverData.chainRpcUrl);
+    }
   }
 }
 // Store active SSE transports by name
@@ -208,7 +220,7 @@ const transports = {};
 // Endpoint to get or create server instance and return connection URL
 app.get("/server/:name", async (req, res) => {
   let { name } = req.params;
-  const { abi, inviteCode } = req.query;
+  const { abi, inviteCode, chainRpcUrl } = req.query;
   console.log(`===> Received request for server with name: ${name}`);
   // concat name with name-inviteCode
   name = `${name}-${inviteCode}`;
@@ -243,10 +255,14 @@ app.get("/server/:name", async (req, res) => {
 
     let abiInfo = []; // Default to empty array
     if (abi) {
+      if (!chainRpcUrl) {
+        return res.status(400).json({ error: 'Chain RPC URL is required when creating a new server' });
+      }
       try {
         const parsed = abiParser.parseAndStore(abi);
         abiInfo = parsed.raw; // Get the raw ABI array
-        storage.saveServer(name, abiInfo); // Persist to storage
+        storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
+        ethereumService.setRpcUrl(name, chainRpcUrl); // Set RPC URL for the server
         inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
       } catch (error) {
         return res.status(400).json({ error: `Invalid ABI: ${error.message}` });

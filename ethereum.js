@@ -1,35 +1,45 @@
 import { ethers } from 'ethers';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
 
 class EthereumService {
-  constructor(rpcUrl = process.env.ETHEREUM_RPC_URL) {
-    if (!rpcUrl) {
-      throw new Error('Ethereum RPC URL is required. Please set ETHEREUM_RPC_URL in your environment variables.');
-    }
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+  constructor() {
+    this.providers = new Map();
   }
 
-  async validateConnection() {
+  setRpcUrl(serverName, rpcUrl) {
+    if (!rpcUrl) {
+      throw new Error('Chain RPC URL is required for the server.');
+    }
+    this.providers.set(serverName, new ethers.JsonRpcProvider(rpcUrl));
+  }
+
+  getProvider(serverName) {
+    const provider = this.providers.get(serverName);
+    if (!provider) {
+      throw new Error(`No RPC provider found for server: ${serverName}`);
+    }
+    return provider;
+  }
+
+  async validateConnection(serverName) {
     try {
-      await this.provider.getNetwork();
+      const provider = this.getProvider(serverName);
+      await provider.getNetwork();
       return true;
     } catch (error) {
-      throw new Error(`Failed to connect to Ethereum RPC: ${error.message}`);
+      throw new Error(`Failed to connect to Chain RPC: ${error.message}`);
     }
   }
 
-  async callContractFunction(contractAddress, functionName, params, abi = []) {
+  async callContractFunction(serverName, contractAddress, functionName, params, abi = []) {
     try {
-      await this.validateConnection();
+      await this.validateConnection(serverName);
+      const provider = this.getProvider(serverName);
 
       if (!ethers.isAddress(contractAddress)) {
         throw new Error('Invalid contract address');
       }
 
-      const contract = new ethers.Contract(contractAddress, abi, this.provider);
+      const contract = new ethers.Contract(contractAddress, abi, provider);
       const result = await contract[functionName](...params);
 
       // Handle different return types
