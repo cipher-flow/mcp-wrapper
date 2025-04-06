@@ -1,13 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { config } from './config.js';
 
 const INVITE_CODES_FILE = path.join(process.cwd(), 'storage', 'invite-codes.json');
 
 class InviteCodeManager {
   constructor() {
-    this.codes = this._loadCodes();
   }
 
   _loadCodes() {
@@ -22,49 +20,43 @@ class InviteCodeManager {
     return {};
   }
 
-  _persistCodes() {
+  _persistCodes(codes) {
     try {
-      fs.writeFileSync(INVITE_CODES_FILE, JSON.stringify(this.codes, null, 2));
+      fs.writeFileSync(INVITE_CODES_FILE, JSON.stringify(codes, null, 2));
     } catch (error) {
       console.error('Error saving invite codes:', error);
     }
   }
 
-  generateCode() {
-    const code = crypto.randomBytes(config.inviteCode.length / 2).toString('hex');
-    this.codes[code] = {
-      servers: [], // Array of server names created with this code
-      accessCount: 0, // Number of times this code has been used to access servers
-      createdAt: new Date().toISOString()
-    };
-    this._persistCodes();
-    return code;
-  }
-
   validateCode(code) {
-    return this.codes.hasOwnProperty(code);
+    const codes = this._loadCodes();
+    return codes.hasOwnProperty(code);
   }
 
   getServersForCode(code) {
+    const codes = this._loadCodes();
     if (!this.validateCode(code)) return [];
-    return this.codes[code].servers;
+    return codes[code].servers;
   }
 
   canCreateServer(code) {
+    const codes = this._loadCodes();
     if (!this.validateCode(code)) return false;
-    return this.codes[code].servers.length < config.inviteCode.maxServers;
+    return codes[code].servers.length < config.inviteCode.maxServers;
   }
 
   canAccessServer(code) {
+    const codes = this._loadCodes();
     if (!this.validateCode(code)) return false;
-    return this.codes[code].accessCount < config.inviteCode.maxAccesses;
+    return codes[code].accessCount < config.inviteCode.maxAccesses;
   }
 
   addServerToCode(code, serverName) {
     if (!this.canCreateServer(code)) return false;
-    if (!this.codes[code].servers.includes(serverName)) {
-      this.codes[code].servers.push(serverName);
-      this._persistCodes();
+    const codes = this._loadCodes();
+    if (!codes[code].servers.includes(serverName)) {
+      codes[code].servers.push(serverName);
+      this._persistCodes(codes);
       return true;
     }
     return false;
@@ -72,26 +64,21 @@ class InviteCodeManager {
 
   incrementAccess(code) {
     if (!this.canAccessServer(code)) return false;
-    this.codes[code].accessCount++;
-    this._persistCodes();
+    const codes = this._loadCodes();
+    codes[code].accessCount++;
+    this._persistCodes(codes);
     return true;
   }
 
   getCodeInfo(code) {
-    return this.codes[code];
+    const codes = this._loadCodes();
+    return codes[code];
   }
 
   isServerExist(code, serverName) {
+    const codes = this._loadCodes();
     if (!this.validateCode(code)) return false;
-    return this.codes[code].servers.includes(serverName);
-  }
-
-  generateBatch(count) {
-    const codes = [];
-    for (let i = 0; i < count; i++) {
-      codes.push(this.generateCode());
-    }
-    return codes;
+    return codes[code].servers.includes(serverName);
   }
 }
 
