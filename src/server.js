@@ -172,17 +172,11 @@ app.get('/active-servers', (c) => {
   const inviteCode = c.req.query('inviteCode');
 
   if (!inviteCode) {
-    return new Response(JSON.stringify({ error: "Invite code is required" }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: "Invite code is required" }, 400);
   }
 
   if (!inviteCodeManager.validateCode(inviteCode)) {
-    return new Response(JSON.stringify({ error: "Invalid invite code" }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: "Invalid invite code" }, 403);
   }
 
   // Get servers directly from invite code info
@@ -197,11 +191,8 @@ app.get('/active-servers', (c) => {
     };
   });
   console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
-  return new Response(JSON.stringify({
+  return c.json({
     servers: serverDetails,
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
   });
 });
 
@@ -220,42 +211,27 @@ app.get("/server/:name", async (c) => {
   console.log(`===> Server name with invite code: ${name}`);
 
   if (!name) {
-    return new Response(JSON.stringify({ error: 'Server name is required' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: 'Server name is required' }, 400);
   }
 
   if (!inviteCode) {
-    return new Response(JSON.stringify({ error: 'Invite code is required' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: 'Invite code is required' }, 400);
   }
 
   // Validate invite code
   if (!inviteCodeManager.validateCode(inviteCode)) {
-    return new Response(JSON.stringify({ error: 'Invalid invite code' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: 'Invalid invite code' }, 403);
   }
 
   // Check if server exists and if new server can be created
   const serverExists = inviteCodeManager.isServerExist(inviteCode, name);
   if (!serverExists && !inviteCodeManager.canCreateServer(inviteCode)) {
-    return new Response(JSON.stringify({ error: 'Invite code has reached maximum server limit' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
   // 检查访问限制
   if (!inviteCodeManager.canAccessServer(inviteCode)) {
-    return new Response(JSON.stringify({ error: 'Invite code has reached maximum access limit' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
   // Create new server instance if it doesn't exist
@@ -263,10 +239,7 @@ app.get("/server/:name", async (c) => {
     console.log(`===> Creating new server instance for name: ${name}`);
 
     if (!chainRpcUrl) {
-      return new Response(JSON.stringify({ error: 'Chain RPC URL is required when creating a new server' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return c.json({ error: 'Chain RPC URL is required when creating a new server' }, 400);
     }
     try {
       const parsed = abiParser.parseAndStore(abi);
@@ -274,10 +247,7 @@ app.get("/server/:name", async (c) => {
       storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
       inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
     } catch (error) {
-      return new Response(JSON.stringify({ error: `Invalid ABI: ${error.message}` }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
     }
   }
 
@@ -285,12 +255,9 @@ app.get("/server/:name", async (c) => {
   const serverData = storage.getServer(name);
   const server = createMcpServer(name, serverData?.abi || []);
 
-  return new Response(JSON.stringify({
+  return c.json({
     url: `/sse/${name}`,
     messageUrl: `/messages/${name}`
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
   });
 });
 
@@ -302,10 +269,7 @@ app.get("/sse/:name", async (c) => {
   const inviteCode = name.split('-').slice(-1)[0];
   if (!inviteCodeManager.isServerExist(inviteCode, name)) {
     console.log(`===> Server instance not found for name: ${name}`);
-    return new Response(`No server found for name ${name}`, {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    return c.text(`No server found for name ${name}`, 404);
   }
 
   // In Hono, we need to get the original response object to handle SSE
@@ -326,10 +290,7 @@ app.get("/sse/:name", async (c) => {
 
   console.log(`Active transports for ${name}`);
   await server.connect(transport);
-  // 使用标准 Response 对象
-  return new Response(null, {
-    status: 200
-  });
+  return c.body(null);
 });
 
 // Message endpoint with name parameter
@@ -342,25 +303,15 @@ app.post("/messages/:name", async (c) => {
     const req = c.req.raw;
     const res = c.res.raw;
     await transport.handlePostMessage(req, res);
-    // 消息已经通过 transport 处理
-    return new Response(null, {
-      status: 200
-    });
+    return c.body(null);
   } else {
-    return new Response(`No transport found for name ${name} and sessionId ${sessionId}`, {
-      status: 400,
-      headers: { 'Content-Type': 'text/plain' }
-    });
+    return c.text(`No transport found for name ${name} and sessionId ${sessionId}`, 400);
   }
 });
 
 // Simple ping endpoint for API testing
 app.get('/ping', (c) => {
-  // 确保返回的是标准 Response 对象
-  return new Response('pong', {
-    status: 200,
-    headers: { 'Content-Type': 'text/plain' }
-  });
+  return c.text('pong');
 });
 
 // Serve static files
