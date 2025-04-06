@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { inviteCodeManager } from '../inviteCode.js';
+import { inviteCodeManager } from '../src/inviteCode.js';
 
 const count = process.argv[2] ? parseInt(process.argv[2]) : 1;
 
