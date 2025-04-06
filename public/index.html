@@ -107,7 +107,9 @@
             }
             activeServers.forEach(server => {
                 const li = document.createElement('li');
-                li.textContent = server;
+                const baseUrl = window.location.origin;
+                const serverUrl = `${baseUrl}/sse/${server}`;
+                li.textContent = serverUrl;
                 serversList.appendChild(li);
             });
         }
