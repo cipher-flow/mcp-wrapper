@@ -45,6 +45,11 @@ class InviteCodeManager {
     return this.codes.hasOwnProperty(code);
   }
 
+  getServersForCode(code) {
+    if (!this.validateCode(code)) return [];
+    return this.codes[code].servers;
+  }
+
   canCreateServer(code) {
     if (!this.validateCode(code)) return false;
     return this.codes[code].servers.length < config.inviteCode.maxServers;
@@ -74,6 +79,11 @@ class InviteCodeManager {
 
   getCodeInfo(code) {
     return this.codes[code];
+  }
+
+  isServerExist(code, serverName) {
+    if (!this.validateCode(code)) return false;
+    return this.codes[code].servers.includes(serverName);
   }
 
   generateBatch(count) {
