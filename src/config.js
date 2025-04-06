@@ -12,6 +12,6 @@ export const config = {
   inviteCode: {
     length: validateEnvVar('INVITE_CODE_LENGTH', 12),
     maxServers: validateEnvVar('INVITE_CODE_MAX_SERVERS', 100),
-    maxAccesses: validateEnvVar('INVITE_CODE_MAX_ACCESSES', 1000),
+    maxAccesses: validateEnvVar('INVITE_CODE_MAX_ACCESSES', 10000),
   }
 };
