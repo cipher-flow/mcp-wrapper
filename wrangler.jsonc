@@ -1,5 +1,6 @@
 {
     "name": "mcp-wrapper",
     "compatibility_date": "2025-04-06",
-    "main": "src/server.js"
+    "main": "src/server.js",
+    "compatibility_flags": ["nodejs_compat"]
 }

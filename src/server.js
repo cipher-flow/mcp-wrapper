@@ -1,13 +1,12 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
 import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
-import { serveStatic } from '@hono/node-server/serve-static';
+import { serveStatic } from 'hono/cloudflare-workers';
 
 const app = new Hono();
 
@@ -331,11 +330,22 @@ app.post("/messages/:name", async (c) => {
 // Serve static files
 app.use('/*', serveStatic({ root: './public' }));
 
-const PORT = process.env.PORT || 3000;
-// Start server
-serve({
-  fetch: app.fetch,
-  port: PORT
-}, () => {
-  console.log(`Hono Server running on port ${PORT}`);
-});
+// 导出默认函数供 Cloudflare Workers 调用
+export default {
+  fetch: app.fetch
+};
+
+// 当在本地环境运行时使用此代码（不会在 Cloudflare Workers 中执行）
+if (typeof process !== 'undefined') {
+  const PORT = process.env.PORT || 3000;
+  import('@hono/node-server').then(({ serve }) => {
+    serve({
+      fetch: app.fetch,
+      port: PORT
+    }, () => {
+      console.log(`Hono Server running on port ${PORT}`);
+    });
+  }).catch(err => {
+    console.error('Failed to start server:', err);
+  });
+}
