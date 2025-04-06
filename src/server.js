@@ -309,15 +309,20 @@ app.post("/messages/:name", async (c) => {
   }
 });
 
+// Simple ping endpoint for API testing
+app.get('/ping', (c) => {
+  return c.text('pong');
+});
+
 // Serve static files
 app.use('/*', serveStatic({ root: './public' }));
 
-// 导出默认函数供 Cloudflare Workers 调用
+// Export default function for Cloudflare Workers
 export default {
   fetch: app.fetch
 };
 
-// 当在本地环境运行时使用此代码（不会在 Cloudflare Workers 中执行）
+// For local development (not used in Cloudflare Workers)
 if (typeof process !== 'undefined') {
   const PORT = process.env.PORT || 3000;
   import('@hono/node-server').then(({ serve }) => {
