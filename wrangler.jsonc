@@ -2,5 +2,10 @@
     "name": "mcp-wrapper",
     "compatibility_date": "2025-04-06",
     "main": "src/server.js",
+    "observability": {
+      "logs": {
+        "enabled": true
+      }
+    },
     "compatibility_flags": ["nodejs_compat"]
 }
