@@ -46,6 +46,23 @@
 </head>
 <body>
     <h1>MCP Wrapper</h1>
+    <div class="container">
+        <div class="user-guide">
+            <h2>Paste Solidity ABI and get a running MCP(Model Context Protocol) server!</h2>
+            <ol>
+                <li><strong>Get an Invite Code</strong>: Obtain an invite code from your friend or <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank">apply by filling this form</a>. Each code can: create up to 100 servers, invoke MCP tools for 1000 times.</li>
+                <li><strong>Create a New Server</strong>: Use your invite code to create a new MCP server by providing:
+                    <ul>
+                        <li>Invite Code</li>
+                        <li>Server Name</li>
+                        <li>Chain RPC URL</li>
+                        <li>Smart Contract ABI</li>
+                    </ul>
+                </li>
+                <li><strong>Access Your Servers</strong>: Enter your invite code to view all servers created with that code.</li>
+            </ol>
+        </div>
+    </div>
     <div class="forms-container">
         <div id="serverList">
             <h2>Active Servers</h2>
@@ -112,9 +129,7 @@
                 const serverUrl = `${baseUrl}/sse/${server.name}`;
                 const chainRpcUrl = server.chainRpcUrl || 'Not configured';
                 li.innerHTML = `
-                    <div><strong>Server Name:</strong> ${server.name}</div>
-                    <div><strong>Server URL:</strong> ${serverUrl}</div>
-                    <div><strong>Chain RPC URL:</strong> ${chainRpcUrl}</div>
+                    <div>${serverUrl}</div>
                 `;
                 serversList.appendChild(li);
             });
