@@ -1,0 +1,5 @@
+{
+    "name": "mcp-wrapper",
+    "compatibility_date": "2025-04-06",
+    "main": "src/server.js"
+}
