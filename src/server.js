@@ -318,20 +318,26 @@ app.get('/ping', (c) => {
 app.use('/*', serveStatic({ root: './public' }));
 
 // Export default function for Cloudflare Workers
-// 确保直接导出处理请求的函数，而不是包含它的对象
+// Ensure we directly export the request handler function, not an object containing it
 export default app;
 
 // For local development (not used in Cloudflare Workers)
-if (typeof process !== 'undefined') {
+if (typeof process !== 'undefined' && process.version && !process.env.CLOUDFLARE_WORKER && !globalThis.Cloudflare) {
+  console.log('Starting in local Node.js environment...');
   const PORT = process.env.PORT || 3000;
-  import('@hono/node-server').then(({ serve }) => {
-    serve({
-      fetch: app.fetch,
-      port: PORT
-    }, () => {
-      console.log(`Hono Server running on port ${PORT}`);
+
+  // Dynamically import Node server module, only execute in real Node environment
+  // This completely avoids loading this module in Cloudflare environment
+  import('@hono/node-server')
+    .then(({ serve }) => {
+      serve({
+        fetch: app.fetch,
+        port: PORT
+      }, () => {
+        console.log(`Hono Server running on port ${PORT}`);
+      });
+    })
+    .catch(err => {
+      console.error('Failed to start server:', err);
     });
-  }).catch(err => {
-    console.error('Failed to start server:', err);
-  });
 }
