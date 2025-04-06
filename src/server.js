@@ -1,13 +1,15 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import express from "express";
+import { Hono } from 'hono';
+import { serve } from '@hono/node-server';
 import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
+import { serveStatic } from '@hono/node-server/serve-static';
 
-const app = express();
+const app = new Hono();
 
 // Factory function to create configured MCP server instances
 function createMcpServer(name, abiInfo) {
@@ -173,15 +175,15 @@ function createMcpServer(name, abiInfo) {
 
 
 // Endpoint to get active servers
-app.get('/active-servers', (req, res) => {
-  const { inviteCode } = req.query;
+app.get('/active-servers', (c) => {
+  const inviteCode = c.req.query('inviteCode');
 
   if (!inviteCode) {
-    return res.status(400).json({ error: "Invite code is required" });
+    return c.json({ error: "Invite code is required" }, 400);
   }
 
   if (!inviteCodeManager.validateCode(inviteCode)) {
-    return res.status(403).json({ error: "Invalid invite code" });
+    return c.json({ error: "Invalid invite code" }, 403);
   }
 
   // Get servers directly from invite code info
@@ -197,8 +199,8 @@ app.get('/active-servers', (req, res) => {
   });
   // print filteredServers
   console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
-  res.json({
-    servers: serverDetails,
+  return c.json({
+    servers: serverDetails
   });
 });
 
@@ -218,36 +220,37 @@ for (const name of storage.getAllServers()) {
 const transports = {};
 
 // Endpoint to get or create server instance and return connection URL
-app.get("/server/:name", async (req, res) => {
-  let { name } = req.params;
-  const { abi, inviteCode, chainRpcUrl } = req.query;
+app.get("/server/:name", async (c) => {
+  let name = c.req.param('name');
+  const abi = c.req.query('abi');
+  const inviteCode = c.req.query('inviteCode');
+  const chainRpcUrl = c.req.query('chainRpcUrl');
   console.log(`===> Received request for server with name: ${name}`);
   // concat name with name-inviteCode
   name = `${name}-${inviteCode}`;
   console.log(`===> Server name with invite code: ${name}`);
   if (!name) {
-    return res.status(400).json({ error: 'Server name is required' });
+    return c.json({ error: 'Server name is required' }, 400);
   }
 
   if (!inviteCode) {
-    return res.status(400).json({ error: 'Invite code is required' });
+    return c.json({ error: 'Invite code is required' }, 400);
   }
 
   // Validate invite code
   if (!inviteCodeManager.validateCode(inviteCode)) {
-    return res.status(403).json({ error: 'Invalid invite code' });
+    return c.json({ error: 'Invalid invite code' }, 403);
   }
 
   // Check if this is a new server creation
   if (!servers[name] && !inviteCodeManager.canCreateServer(inviteCode)) {
-    return res.status(403).json({ error: 'Invite code has reached maximum server limit' });
+    return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
   // Check access limit
   if (!inviteCodeManager.canAccessServer(inviteCode)) {
-    return res.status(403).json({ error: 'Invite code has reached maximum access limit' });
+    return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
-
 
   // Create or get server instance for this name
   if (!servers[name]) {
@@ -256,7 +259,7 @@ app.get("/server/:name", async (req, res) => {
     let abiInfo = []; // Default to empty array
     if (abi) {
       if (!chainRpcUrl) {
-        return res.status(400).json({ error: 'Chain RPC URL is required when creating a new server' });
+        return c.json({ error: 'Chain RPC URL is required when creating a new server' }, 400);
       }
       try {
         const parsed = abiParser.parseAndStore(abi);
@@ -265,7 +268,7 @@ app.get("/server/:name", async (req, res) => {
         ethereumService.setRpcUrl(name, chainRpcUrl); // Set RPC URL for the server
         inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
       } catch (error) {
-        return res.status(400).json({ error: `Invalid ABI: ${error.message}` });
+        return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
       }
     }
     // print abiInfo
@@ -273,22 +276,24 @@ app.get("/server/:name", async (req, res) => {
     servers[name] = createMcpServer(name, abiInfo);
   }
 
-  res.json({
+  return c.json({
     url: `/sse/${name}`,
     messageUrl: `/messages/${name}`
   });
 });
 
 // SSE endpoint with name parameter
-app.get("/sse/:name", async (req, res) => {
-  const { name } = req.params;
+app.get("/sse/:name", async (c) => {
+  const name = c.req.param('name');
   console.log(`===> Received SSE connection request for name: ${name}`);
 
   if (!servers[name]) {
     console.log(`===> Server instance not found for name: ${name}`);
-    return res.status(404).send(`No server found for name ${name}`);
+    return c.text(`No server found for name ${name}`, 404);
   }
 
+  // In Hono, we need to get the original response object to handle SSE
+  const res = c.res.raw;
   const transport = new SSEServerTransport(`/messages/${name}`, res);
   transports[name] = transports[name] || {};
   transports[name][transport.sessionId] = transport;
@@ -304,24 +309,33 @@ app.get("/sse/:name", async (req, res) => {
   console.log(`Active transports for ${name}`);
 
   await servers[name].connect(transport);
+  return c.body(null); // 返回已处理的响应
 });
 
 // Message endpoint with name parameter
-app.post("/messages/:name", async (req, res) => {
-  const { name } = req.params;
-  const sessionId = req.query.sessionId;
+app.post("/messages/:name", async (c) => {
+  const name = c.req.param('name');
+  const sessionId = c.req.query('sessionId');
   const transport = transports[name]?.[sessionId];
   if (transport) {
+    // In Hono, we need to get the original request and response objects
+    const req = c.req.raw;
+    const res = c.res.raw;
     await transport.handlePostMessage(req, res);
+    return c.body(null); // Return processed response
   } else {
-    res.status(400).send(`No transport found for name ${name} and sessionId ${sessionId}`);
+    return c.text(`No transport found for name ${name} and sessionId ${sessionId}`, 400);
   }
 });
 
 // Serve static files
-app.use(express.static("public"));
+app.use('/*', serveStatic({ root: './public' }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Express Server running on port ${PORT}`);
+// Start server
+serve({
+  fetch: app.fetch,
+  port: PORT
+}, () => {
+  console.log(`Hono Server running on port ${PORT}`);
 });
