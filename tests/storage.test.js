@@ -1,7 +1,7 @@
+import { jest } from '@jest/globals';
 import { storage, Storage } from '../src/storage.js';
 import fs from 'fs';
 import path from 'path';
-import { expect } from 'chai';
 
 describe('Storage', () => {
   const testServerName = 'testServer';
@@ -18,12 +18,10 @@ describe('Storage', () => {
     global.storage = new Storage();
   });
 
-
-
   it('should save and retrieve a server', () => {
     storage.saveServer(testServerName, { abi: testABI, chainRpcUrl: testChainRpcUrl });
     const server = storage.getServer(testServerName);
-    expect(server).to.deep.equal({
+    expect(server).toEqual({
       abi: testABI,
       chainRpcUrl: testChainRpcUrl,
     });
@@ -35,17 +33,15 @@ describe('Storage', () => {
     // Create new storage instance to simulate restart
     const newStorage = new Storage();
     const server = newStorage.getServer(testServerName);
-    expect(server).to.deep.equal({ abi: testABI });
+    expect(server).toEqual({ abi: testABI });
   });
 
   it('should handle missing server file', () => {
     const servers = storage._loadServers();
-    expect(servers).to.deep.equal({});
+    expect(servers).toEqual({});
   });
 
-
-
   it('should return undefined for non-existent server', () => {
-    expect(storage.getServer('nonexistent')).to.be.undefined;
+    expect(storage.getServer('nonexistent')).toBeUndefined();
   });
 });

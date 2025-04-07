@@ -1,5 +1,5 @@
+import { jest } from '@jest/globals';
 import { abiParser } from '../src/abiParser.js';
-import { expect } from 'chai';
 
 describe('ABIParser', () => {
   const sampleABI = [
@@ -174,30 +174,30 @@ describe('ABIParser', () => {
   it('should parse and store ABI correctly', () => {
     const result = abiParser.parseAndStore(sampleABI, 'test');
 
-    expect(result).to.have.property('raw');
-    expect(result.raw).to.deep.equal(sampleABI);
-    expect(result).to.have.property('functions');
-    expect(result.functions).to.have.lengthOf(9);
-    expect(result).to.have.property('events');
-    expect(result.events).to.have.lengthOf(1);
-    expect(result).to.have.property('interface');
+    expect(result).toHaveProperty('raw');
+    expect(result.raw).toEqual(sampleABI);
+    expect(result).toHaveProperty('functions');
+    expect(result.functions).toHaveLength(9);
+    expect(result).toHaveProperty('events');
+    expect(result.events).toHaveLength(1);
+    expect(result).toHaveProperty('interface');
   });
 
   it('should process function signatures correctly', () => {
     const result = abiParser.parseAndStore(sampleABI, 'test');
 
     const transferFn = result.functions.find(fn => fn.name === 'transfer');
-    expect(transferFn.signature).to.equal('transfer(address,uint256)');
+    expect(transferFn.signature).toBe('transfer(address,uint256)');
 
     const balanceOfFn = result.functions.find(fn => fn.name === 'balanceOf');
-    expect(balanceOfFn.signature).to.equal('balanceOf(address)');
+    expect(balanceOfFn.signature).toBe('balanceOf(address)');
   });
 
   it('should process event signatures correctly', () => {
     const result = abiParser.parseAndStore(sampleABI, 'test');
 
     const transferEvent = result.events.find(ev => ev.name === 'Transfer');
-    expect(transferEvent.signature).to.equal('Transfer(address,address,uint256)');
+    expect(transferEvent.signature).toBe('Transfer(address,address,uint256)');
   });
 
   it('should invoke view functions correctly', () => {
@@ -206,15 +206,15 @@ describe('ABIParser', () => {
 
     // Test totalSupply
     const totalSupplyData = iface.encodeFunctionData('totalSupply');
-    expect(totalSupplyData).to.be.a('string');
+    expect(typeof totalSupplyData).toBe('string');
 
     // Test balanceOf
     const balanceOfData = iface.encodeFunctionData('balanceOf', ['0x1234567890123456789012345678901234567890']);
-    expect(balanceOfData).to.be.a('string');
+    expect(typeof balanceOfData).toBe('string');
 
     // Test maximumFee
     const maximumFeeData = iface.encodeFunctionData('maximumFee');
-    expect(maximumFeeData).to.be.a('string');
+    expect(typeof maximumFeeData).toBe('string');
   });
 
   it('should invoke nonpayable functions correctly', () => {
@@ -224,12 +224,12 @@ describe('ABIParser', () => {
     // Test transfer
     const transferData = iface.encodeFunctionData('transfer',
       ['0x1234567890123456789012345678901234567890', 100]);
-    expect(transferData).to.be.a('string');
+    expect(typeof transferData).toBe('string');
 
     // Test transferOwnership
     const transferOwnershipData = iface.encodeFunctionData('transferOwnership',
       ['0x1234567890123456789012345678901234567890']);
-    expect(transferOwnershipData).to.be.a('string');
+    expect(typeof transferOwnershipData).toBe('string');
   });
 
   it('should handle invalid function calls', () => {
@@ -237,30 +237,30 @@ describe('ABIParser', () => {
     const iface = result.interface;
 
     // Test with wrong parameter count
-    expect(() => iface.encodeFunctionData('balanceOf')).to.throw();
+    expect(() => iface.encodeFunctionData('balanceOf')).toThrow();
 
     // Test with wrong parameter type
     expect(() => iface.encodeFunctionData('transfer',
-      ['0x1234567890123456789012345678901234567890', 'invalid'])).to.throw();
+      ['0x1234567890123456789012345678901234567890', 'invalid'])).toThrow();
 
     // Test non-existent function
-    expect(() => iface.encodeFunctionData('nonexistentFunction')).to.throw();
+    expect(() => iface.encodeFunctionData('nonexistentFunction')).toThrow();
   });
 
   it('should throw error for invalid ABI', () => {
-    expect(() => abiParser.parseAndStore('invalid', 'test')).to.throw('Failed to parse ABI');
-    expect(() => abiParser.parseAndStore({}, 'test')).to.throw('Failed to parse ABI');
+    expect(() => abiParser.parseAndStore('invalid', 'test')).toThrow('Failed to parse ABI');
+    expect(() => abiParser.parseAndStore({}, 'test')).toThrow('Failed to parse ABI');
   });
 
   it('should retrieve stored ABI by ID', () => {
     abiParser.parseAndStore(sampleABI, 'test');
     const result = abiParser.getABI('test');
 
-    expect(result).to.have.property('raw');
-    expect(result.raw).to.deep.equal(sampleABI);
+    expect(result).toHaveProperty('raw');
+    expect(result.raw).toEqual(sampleABI);
   });
 
   it('should throw error for non-existent ABI ID', () => {
-    expect(() => abiParser.getABI("nonexistent")).to.throw("No ABI stored");
+    expect(() => abiParser.getABI("nonexistent")).toThrow("No ABI stored");
   });
 });
