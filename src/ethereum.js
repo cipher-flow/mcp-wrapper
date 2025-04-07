@@ -20,6 +20,29 @@ class EthereumService {
     }
   }
 
+  async constructTransactionData(serverName, contractAddress, functionName, params, abi = []) {
+    try {
+      await this.validateConnection(serverName);
+      const provider = this.getProvider(serverName);
+
+      if (!ethers.isAddress(contractAddress)) {
+        throw new Error("Invalid contract address");
+      }
+
+      const contract = new ethers.Contract(contractAddress, abi, provider);
+      const populatedTransaction = await contract[functionName].populateTransaction(...params);
+
+      return {
+        to: contractAddress,
+        data: populatedTransaction.data,
+        value: populatedTransaction.value?.toString() || '0',
+        chainId: (await provider.getNetwork()).chainId.toString()
+      };
+    } catch (error) {
+      throw new Error(`Failed to construct transaction data: ${error.message}`);
+    }
+  }
+
   async callContractFunction(
     serverName,
     contractAddress,

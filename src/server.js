@@ -104,6 +104,58 @@ function createMcpServer(name, abiInfo) {
     }
   });
 
+  // Add tool for constructing transaction data
+  server.tool(
+    `constructTransactionData-${name}`,
+    {
+      contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address'),
+      functionName: z.string().min(1, 'Function name is required'),
+      params: z.array(z.string())
+    },
+    async (args) => {
+      try {
+        const inviteCode = name.split('-').slice(-1)[0];
+        if (!inviteCodeManager.validateCode(inviteCode)) {
+          return {
+            content: [{
+              type: "text",
+              text: "Invalid invite code"
+            }]
+          };
+        }
+        if (!inviteCodeManager.canAccessServer(inviteCode)) {
+          return {
+            content: [{
+              type: "text",
+              text: "Invite code has reached maximum access limit"
+            }]
+          };
+        }
+        inviteCodeManager.incrementAccess(inviteCode);
+
+        const txData = await ethereumService.constructTransactionData(
+          name,
+          args.contractAddress,
+          args.functionName,
+          args.params,
+          abiInfo
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Transaction data: ${JSON.stringify(txData)}`
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error constructing transaction data: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
   // Resource for full ABI
   server.resource(
     `abi-${name}`,
