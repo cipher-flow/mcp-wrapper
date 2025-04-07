@@ -2,7 +2,10 @@
     "name": "mcp-wrapper",
     "compatibility_date": "2025-04-06",
     "main": "src/server.js",
-    "port": 3000,
+    "dev": {
+        "port": 3000,
+        "local_protocol": "http"
+    },
     "observability": {
         "logs": {
             "enabled": true
@@ -12,11 +15,15 @@
         "nodejs_compat"
     ],
     "assets": {
-        "bucket": "./public",
-        "include": ["**/*"],
-        "exclude": []
+        "directory": "./public",
+        "binding": "ASSETS",
+        "html_handling": "force-trailing-slash",
+        "not_found_handling": "404-page"
     },
-    "site": {
-        "bucket": "./public"
-    }
+    "kv_namespaces": [
+        {
+            "binding": "KV_INVITE_CODES",
+            "id": "cfbcd60e21d342c7ae9d05d1604d51ae"
+        }
+    ]
 }
