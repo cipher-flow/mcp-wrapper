@@ -10,5 +10,13 @@
     },
     "compatibility_flags": [
         "nodejs_compat"
-    ]
+    ],
+    "assets": {
+        "bucket": "./public",
+        "include": ["**/*"],
+        "exclude": []
+    },
+    "site": {
+        "bucket": "./public"
+    }
 }
