@@ -23,6 +23,7 @@ const importStaticMiddleware = async () => {
   }
 };
 
+// Create Hono app instance - this should only happen once at the module level
 const app = new Hono();
 
 // Factory function to create configured MCP server instances
@@ -36,7 +37,8 @@ function createMcpServer(name, abiInfo) {
   if (!abiInfo || !Array.isArray(abiInfo)) {
     console.log(`Invalid ABI info for ${name}`);
     return server;
-  };
+  }
+
   abiInfo.forEach((item) => {
     if (item.type === 'function') {
       const paramsSchema = {};
@@ -335,18 +337,18 @@ app.get("/server/:name", async (c) => {
   }
 
   // Validate invite code
-  if (!inviteCodeManager.validateCode(inviteCode)) {
+  if (!await inviteCodeManager.validateCode(inviteCode)) {
     return c.json({ error: 'Invalid invite code' }, 403);
   }
 
   // Check if server exists and if new server can be created
   const serverExists = inviteCodeManager.isServerExist(inviteCode, name);
-  if (!serverExists && !inviteCodeManager.canCreateServer(inviteCode)) {
+  if (!serverExists && !await inviteCodeManager.canCreateServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
   // 检查访问限制
-  if (!inviteCodeManager.canAccessServer(inviteCode)) {
+  if (!await inviteCodeManager.canAccessServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
@@ -360,8 +362,8 @@ app.get("/server/:name", async (c) => {
     try {
       const parsed = abiParser.parseAndStore(abi);
       const abiInfo = parsed.raw; // Get the raw ABI array
-      storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
-      inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
+      await storage.saveServer(name, {chainRpcUrl: chainRpcUrl, abi: abiInfo}); // Persist to storage with RPC URL
+      await inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
     } catch (error) {
       return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
     }
@@ -485,20 +487,34 @@ app.use('*', (c, next) => {
   return next();
 });
 
-// Setup function to initialize the application
-async function setupApp() {
-  // Get the static file middleware
-  serveStaticMiddleware = await importStaticMiddleware();
+// Initialize static middleware only once at module level
+let staticMiddlewareInitialized = false;
 
-  // Now we can safely add the static file middleware
-  app.use('/*', serveStaticMiddleware({ root: './public' }));
+// Setup function to initialize the application - does not register routes
+async function setupApp() {
+  // Only initialize static middleware once
+  if (!staticMiddlewareInitialized) {
+    // Get the static file middleware
+    serveStaticMiddleware = await importStaticMiddleware();
+
+    // Now we can safely add the static file middleware
+    app.use('/*', serveStaticMiddleware({ root: './public' }));
+    
+    staticMiddlewareInitialized = true;
+  }
 
   return app;
 }
 
+// Initialize the app once - not on every request
+let initializedApp = null;
+
 export default {
   fetch: async (request, env, ctx) => {
-    const readyApp = await setupApp();
-    return readyApp.fetch(request, env, ctx);
+    // Only set up the app once
+    if (!initializedApp) {
+      initializedApp = await setupApp();
+    }
+    return initializedApp.fetch(request, env, ctx);
   }
 };
