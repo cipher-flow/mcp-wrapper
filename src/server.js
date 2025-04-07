@@ -6,6 +6,7 @@ import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
+import { generateBatch, saveInviteCodes } from "../scripts/generateInviteCodes.js";
 
 // In Cloudflare environment, import cloudflare-workers static file service
 let serveStaticMiddleware = null;
@@ -430,6 +431,47 @@ app.get('/ping', (c) => {
   return c.text('pong');
 });
 
+// Generate invite codes API
+app.post('/api/invite-codes', async (c) => {
+  try {
+    // Check authorization - in production you would want proper auth
+    const authHeader = c.req.header('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    // Parse request body for count
+    const body = await c.req.json();
+    const count = body.count ? parseInt(body.count) : 1;
+
+    if (isNaN(count) || count < 1 || count > 100) {
+      return c.json({ error: 'Invalid count. Must be between 1 and 100.' }, 400);
+    }
+
+    // Generate invite codes
+    const newCodes = generateBatch(count);
+
+    // Make sure inviteCodeManager has access to the environment
+    if (c.env) {
+      inviteCodeManager.setEnv(c.env);
+    } else {
+      return c.json({ error: 'Environment not available' }, 500);
+    }
+
+    // Save to KV and get generated codes list
+    const generatedCodes = await saveInviteCodes(newCodes, inviteCodeManager);
+
+    return c.json({
+      success: true,
+      count: generatedCodes.length,
+      codes: generatedCodes
+    });
+  } catch (error) {
+    console.error('Error generating invite codes:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 // Root path route, redirects to index.html
 app.get('/', (c) => {
   return c.redirect('/index.html');
@@ -454,36 +496,9 @@ async function setupApp() {
   return app;
 }
 
-// Export default function for Cloudflare Workers
-// Ensure we directly export the request handler function, not an object containing it
-const setupPromise = setupApp();
 export default {
   fetch: async (request, env, ctx) => {
-    const readyApp = await setupPromise;
+    const readyApp = await setupApp();
     return readyApp.fetch(request, env, ctx);
   }
 };
-
-// For local development (not used in Cloudflare Workers)
-if (typeof process !== 'undefined' && process.version && !process.env.CLOUDFLARE_WORKER && !globalThis.Cloudflare) {
-  console.log('Starting in local Node.js environment...');
-  const PORT = process.env.PORT || 3000;
-
-  // Setup the app first to ensure all middleware is properly initialized
-  setupApp().then(readyApp => {
-    // Dynamically import Node server module, only execute in real Node environment
-    // This completely avoids loading this module in Cloudflare environment
-    import('@hono/node-server')
-      .then(({ serve }) => {
-        serve({
-          fetch: readyApp.fetch,
-          port: PORT
-        }, () => {
-          console.log(`Hono Server running on port ${PORT}`);
-        });
-      })
-      .catch(err => {
-        console.error('Failed to start server:', err);
-      });
-  });
-}

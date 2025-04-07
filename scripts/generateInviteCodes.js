@@ -4,14 +4,10 @@ import crypto from "crypto";
 import { config } from "../src/config.js";
 import { inviteCodeManager } from "../src/inviteCode.js";
 
-const count = process.argv[2] ? parseInt(process.argv[2]) : 1;
-
-if (isNaN(count) || count < 1) {
-  console.error('Please provide a valid number of invite codes to generate');
-  process.exit(1);
-}
-
-function generateCode() {
+/**
+ * Generate a single invite code with its initial data structure
+ */
+export function generateCode() {
   const code = crypto.randomBytes(config.inviteCode.length / 2).toString('hex');
   return {
     [code]: {
@@ -22,17 +18,27 @@ function generateCode() {
   };
 }
 
-function generateBatch(count) {
-    const codesObject = {};
-    for (let i = 0; i < count; i++) {
-      Object.assign(codesObject, generateCode());
-    }
-    return codesObject;
+/**
+ * Generate a batch of invite codes
+ * @param {number} count - Number of invite codes to generate
+ * @returns {Object} - Invite codes object
+ */
+export function generateBatch(count) {
+  const codesObject = {};
+  for (let i = 0; i < count; i++) {
+    Object.assign(codesObject, generateCode());
+  }
+  return codesObject;
 }
 
-const codes = generateBatch(count);
-const existingCodes = inviteCodeManager._loadCodes();
-const mergedCodes = { ...existingCodes, ...codes };
-inviteCodeManager._persistCodes(mergedCodes);
-console.log('Generated invite codes:');
-Object.keys(codes).forEach(code => console.log(code));
+/**
+ * Save generated invite codes to storage
+ * @param {Object} newCodes - Newly generated invite codes
+ * @param {Object} inviteManager - Invite code manager instance
+ */
+export async function saveInviteCodes(newCodes, inviteManager = inviteCodeManager) {
+  const existingCodes = await inviteManager._loadCodes();
+  const mergedCodes = { ...existingCodes, ...newCodes };
+  await inviteManager._persistCodes(mergedCodes);
+  return Object.keys(newCodes);
+}

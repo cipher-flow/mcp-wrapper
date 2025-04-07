@@ -1,5 +1,5 @@
 {
-  "name": "MCP Wrapper",
+  "name": "mcp-wrapper",
   "version": "1.0.0",
   "description": "Paste Solidity ABI and get a running MCP(Model Context Protocol) server!",
   "main": "src/server.js",
