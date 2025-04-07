@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
+import { SSETransport } from 'hono-mcp-server-sse-transport';
 import { z } from "zod";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
@@ -329,7 +330,7 @@ app.get("/server/:name", async (c) => {
   const inviteCode = c.req.query('inviteCode');
   const chainRpcUrl = c.req.query('chainRpcUrl');
   console.log(`===> Received request for server with name: ${name}`);
-  // 连接 name 和 inviteCode
+  // Combine name and inviteCode
   name = `${name}-${inviteCode}`;
   console.log(`===> Server name with invite code: ${name}`);
 
@@ -387,6 +388,8 @@ app.get("/server/:name", async (c) => {
   });
 });
 
+// SSE endpoint using the already declared transports variable
+
 // SSE endpoint with name parameter
 app.get("/sse/:name", async (c) => {
   const name = c.req.param('name');
@@ -399,25 +402,39 @@ app.get("/sse/:name", async (c) => {
     return c.text(`No server found for name ${name}`, 404);
   }
 
-  // In Hono, we need to get the original response object to handle SSE
-  const res = c.res.raw;
-  const transport = new SSEServerTransport(`/messages/${name}`, res);
-  transports[name] = transports[name] || {};
-  transports[name][transport.sessionId] = transport;
+  return streamSSE(c, async (stream) => {
+    // Create new transport instance
+    const transport = new SSETransport(`/messages/${name}`, stream);
 
-  res.on("close", () => {
-    delete transports[name][transport.sessionId];
-    if (Object.keys(transports[name]).length === 0) {
-      delete transports[name];
+    // Save transport instance, grouped by server name
+    transports[name] = transports[name] || {};
+    transports[name][transport.sessionId] = transport;
+
+    // Clean up resources when connection is aborted
+    stream.onAbort(() => {
+      if (transports[name] && transports[name][transport.sessionId]) {
+        delete transports[name][transport.sessionId];
+        console.log(`Closed SSE connection for ${name} with sessionId ${transport.sessionId}`);
+
+        if (Object.keys(transports[name]).length === 0) {
+          delete transports[name];
+          console.log(`Removed all transports for ${name}`);
+        }
+      }
+    });
+
+    // Get server data and connect
+    const serverData = await storage.getServer(name);
+    const server = createMcpServer(name, serverData?.abi || []);
+
+    console.log(`Active transport created for ${name} with sessionId ${transport.sessionId}`);
+    await server.connect(transport);
+
+    // Keep connection alive
+    while (true) {
+      await stream.sleep(1000); // Send keep-alive message every second
     }
   });
-
-  const serverData = await storage.getServer(name);
-  const server = createMcpServer(name, serverData?.abi || []);
-
-  console.log(`Active transports for ${name}`);
-  await server.connect(transport);
-  return c.body(null);
 });
 
 // Message endpoint with name parameter
@@ -425,15 +442,13 @@ app.post("/messages/:name", async (c) => {
   const name = c.req.param('name');
   const sessionId = c.req.query('sessionId');
   const transport = transports[name]?.[sessionId];
-  if (transport) {
-    // In Hono, we need to get the original request and response objects
-    const req = c.req.raw;
-    const res = c.res.raw;
-    await transport.handlePostMessage(req, res);
-    return c.body(null);
-  } else {
+
+  if (!transport) {
     return c.text(`No transport found for name ${name} and sessionId ${sessionId}`, 400);
   }
+
+  // Use SSETransport's handlePostMessage method to process the request
+  return transport.handlePostMessage(c);
 });
 
 // Simple ping endpoint for API testing

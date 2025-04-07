@@ -20,6 +20,9 @@ importers:
       express:
         specifier: ^4.18.2
         version: 4.21.2
+      hono-mcp-server-sse-transport:
+        specifier: ^0.0.6
+        version: 0.0.6(@modelcontextprotocol/sdk@1.8.0)(hono@4.7.5)
       zod:
         specifier: ^3.22.4
         version: 3.24.2
@@ -1270,6 +1273,12 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  hono-mcp-server-sse-transport@0.0.6:
+    resolution: {integrity: sha512-zomsBFZg/JJeeoSoumgYt5PN4jB0opm4iQa97MH70k5DQKX1igOrnAGWd9nPnhSNpU0c8aI+cSUjofavDOP02w==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': '*'
+      hono: '*'
 
   hono@4.7.5:
     resolution: {integrity: sha512-fDOK5W2C1vZACsgLONigdZTRZxuBqFtcKh7bUQ5cVSbwI2RWjloJDcgFOVzbQrlI6pCmhlTsVYZ7zpLj4m4qMQ==}
@@ -3579,6 +3588,11 @@ snapshots:
       function-bind: 1.1.2
 
   he@1.2.0: {}
+
+  hono-mcp-server-sse-transport@0.0.6(@modelcontextprotocol/sdk@1.8.0)(hono@4.7.5):
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.8.0
+      hono: 4.7.5
 
   hono@4.7.5: {}
 
