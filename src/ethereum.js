@@ -74,6 +74,24 @@ class EthereumService {
       );
     }
   }
+
+  async sendSignedTransaction(serverName, signedTransaction) {
+    try {
+      await this.validateConnection(serverName);
+      const provider = this.getProvider(serverName);
+
+      // Send the pre-signed transaction
+      const tx = await provider.broadcastTransaction(signedTransaction);
+
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      return receipt;
+    } catch (error) {
+      throw new Error(
+        `Failed to execute write operation ${functionName}: ${error.message}`
+      );
+    }
+  }
 }
 
 export const ethereumService = new EthereumService();

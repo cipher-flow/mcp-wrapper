@@ -156,6 +156,55 @@ function createMcpServer(name, abiInfo) {
       }
     }
   );
+
+  // Add tool for sending signed transactions
+  server.tool(
+    `sendSignedTransaction-${name}`,
+    {
+      signedTransaction: z.string().min(1, 'Signed transaction is required')
+    },
+    async (args) => {
+      try {
+        const inviteCode = name.split('-').slice(-1)[0];
+        if (!inviteCodeManager.validateCode(inviteCode)) {
+          return {
+            content: [{
+              type: "text",
+              text: "Invalid invite code"
+            }]
+          };
+        }
+        if (!inviteCodeManager.canAccessServer(inviteCode)) {
+          return {
+            content: [{
+              type: "text",
+              text: "Invite code has reached maximum access limit"
+            }]
+          };
+        }
+        inviteCodeManager.incrementAccess(inviteCode);
+
+        const receipt = await ethereumService.sendSignedTransaction(
+          name,
+          args.signedTransaction
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Transaction sent! Receipt: ${JSON.stringify(receipt)}`
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error sending transaction: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
   // Resource for full ABI
   server.resource(
     `abi-${name}`,
