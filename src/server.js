@@ -68,7 +68,7 @@ function createMcpServer(name, abiInfo) {
             // get invite code from name(name-inviteCode)
             const inviteCode = name.split('-').slice(-1)[0];
             // Validate invite code
-            if (!inviteCodeManager.validateCode(inviteCode)) {
+            if (!(await inviteCodeManager.validateCode(inviteCode))) {
               return {
                 content: [{
                   type: "text",
@@ -77,7 +77,7 @@ function createMcpServer(name, abiInfo) {
               };
             }
             // Check access limit
-            if (!inviteCodeManager.canAccessServer(inviteCode)) {
+            if (!(await inviteCodeManager.canAccessServer(inviteCode))) {
               return {
                 content: [{
                   type: "text",
@@ -86,7 +86,7 @@ function createMcpServer(name, abiInfo) {
               };
             }
             // Increment access count for tool usage
-            inviteCodeManager.incrementAccess(inviteCode);
+            await inviteCodeManager.incrementAccess(inviteCode);
             // Call the contract function
             const result = await ethereumService.callContractFunction(
               name,
@@ -377,7 +377,8 @@ app.get("/sse/:name", async (c) => {
   console.log(`===> Received SSE connection request for name: ${name}`);
 
   const inviteCode = name.split('-').slice(-1)[0];
-  if (!inviteCodeManager.isServerExist(inviteCode, name)) {
+  const serverExists = await inviteCodeManager.isServerExist(inviteCode, name);
+  if (!serverExists) {
     console.log(`===> Server instance not found for name: ${name}`);
     return c.text(`No server found for name ${name}`, 404);
   }
@@ -434,6 +435,14 @@ app.get('/', (c) => {
 if (isCloudflareEnv && serveStaticMiddleware) {
   app.use('/*', serveStaticMiddleware({ root: './public' }));
 }
+
+// Set environment for inviteCodeManager in Cloudflare environment
+app.use('*', (c, next) => {
+  if (isCloudflareEnv && c.env) {
+    inviteCodeManager.setEnv(c.env);
+  }
+  return next();
+});
 
 // For Node.js environment
 if (!isCloudflareEnv) {
