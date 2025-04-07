@@ -7,15 +7,20 @@ import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
 
-// Only used in Cloudflare Workers environment
-const isCloudflareEnv = typeof process === 'undefined' || !process.version || process.env.CLOUDFLARE_WORKER || globalThis.Cloudflare;
-let serveStaticMiddleware;
-if (isCloudflareEnv) {
-  // In Cloudflare environment, import cloudflare-workers static file service
-  import('hono/cloudflare-workers').then(({ serveStatic }) => {
-    serveStaticMiddleware = serveStatic;
-  });
-}
+// In Cloudflare environment, import cloudflare-workers static file service
+let serveStaticMiddleware = null;
+
+// Import static file service middleware
+const importStaticMiddleware = async () => {
+  try {
+    const { serveStatic } = await import('hono/cloudflare-workers');
+    return serveStatic;
+  } catch (error) {
+    console.error('Failed to import serveStatic middleware:', error);
+    // Fallback function that returns a 404 response
+    return () => (c) => c.text('Static file service not available', 404);
+  }
+};
 
 const app = new Hono();
 
@@ -251,7 +256,7 @@ function createMcpServer(name, abiInfo) {
         content: {
           type: "text",
           text: `Here is the ABI for contract ${name}: ${JSON.stringify(abiInfo)}. ` +
-                `What functions are available and what do they do?`
+            `What functions are available and what do they do?`
         }
       }]
     })
@@ -266,7 +271,7 @@ function createMcpServer(name, abiInfo) {
         content: {
           type: "text",
           text: `Explain how to use the ${functionName} function from contract ${name}. ` +
-                `Include parameter types and expected return values.`
+            `Include parameter types and expected return values.`
         }
       }]
     })
@@ -430,88 +435,55 @@ app.get('/', (c) => {
   return c.redirect('/index.html');
 });
 
-// Configure static file serving middleware
-// For Cloudflare Worker environment
-if (isCloudflareEnv && serveStaticMiddleware) {
-  app.use('/*', serveStaticMiddleware({ root: './public' }));
-}
-
 // Set environment for inviteCodeManager in Cloudflare environment
 app.use('*', (c, next) => {
-  if (isCloudflareEnv && c.env) {
+  if (c.env) {
     inviteCodeManager.setEnv(c.env);
   }
   return next();
 });
 
-// For Node.js environment
-if (!isCloudflareEnv) {
-  // Use correct static file middleware approach - for Hono 4.x
-  app.use('/*', async (c, next) => {
-    // Try serving files directly from filesystem
-    try {
-      const path = c.req.path;
-      const filePath = new URL(`../public${path}`, import.meta.url);
-      const fileContent = await import('node:fs/promises')
-        .then(fs => fs.readFile(filePath))
-        .catch(() => null);
+// Setup function to initialize the application
+async function setupApp() {
+  // Get the static file middleware
+  serveStaticMiddleware = await importStaticMiddleware();
 
-      if (fileContent) {
-        // Set appropriate Content-Type
-        const contentType = getContentType(path);
-        c.header('Content-Type', contentType);
-        return c.body(fileContent);
-      }
-    } catch (e) {
-      // Ignore errors and proceed to next middleware
-    }
+  // Now we can safely add the static file middleware
+  app.use('/*', serveStaticMiddleware({ root: './public' }));
 
-    return next();
-  });
-
-  console.log('Static file middleware configured for Node.js environment');
-}
-
-// Helper function: Get Content-Type based on file extension
-function getContentType(path) {
-  const ext = path.split('.').pop().toLowerCase();
-  const contentTypes = {
-    'html': 'text/html',
-    'css': 'text/css',
-    'js': 'application/javascript',
-    'json': 'application/json',
-    'png': 'image/png',
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'gif': 'image/gif',
-    'svg': 'image/svg+xml',
-    'ico': 'image/x-icon'
-  };
-
-  return contentTypes[ext] || 'application/octet-stream';
+  return app;
 }
 
 // Export default function for Cloudflare Workers
 // Ensure we directly export the request handler function, not an object containing it
-export default app;
+const setupPromise = setupApp();
+export default {
+  fetch: async (request, env, ctx) => {
+    const readyApp = await setupPromise;
+    return readyApp.fetch(request, env, ctx);
+  }
+};
 
 // For local development (not used in Cloudflare Workers)
 if (typeof process !== 'undefined' && process.version && !process.env.CLOUDFLARE_WORKER && !globalThis.Cloudflare) {
   console.log('Starting in local Node.js environment...');
   const PORT = process.env.PORT || 3000;
 
-  // Dynamically import Node server module, only execute in real Node environment
-  // This completely avoids loading this module in Cloudflare environment
-  import('@hono/node-server')
-    .then(({ serve }) => {
-      serve({
-        fetch: app.fetch,
-        port: PORT
-      }, () => {
-        console.log(`Hono Server running on port ${PORT}`);
+  // Setup the app first to ensure all middleware is properly initialized
+  setupApp().then(readyApp => {
+    // Dynamically import Node server module, only execute in real Node environment
+    // This completely avoids loading this module in Cloudflare environment
+    import('@hono/node-server')
+      .then(({ serve }) => {
+        serve({
+          fetch: readyApp.fetch,
+          port: PORT
+        }, () => {
+          console.log(`Hono Server running on port ${PORT}`);
+        });
+      })
+      .catch(err => {
+        console.error('Failed to start server:', err);
       });
-    })
-    .catch(err => {
-      console.error('Failed to start server:', err);
-    });
+  });
 }
