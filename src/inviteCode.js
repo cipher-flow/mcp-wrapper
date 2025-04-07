@@ -177,6 +177,7 @@ class InviteCodeManager {
       }
       
       const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      console.log('Value:', value);
       if (!value) return false;
       return value.servers.includes(serverName);
     } catch (error) {

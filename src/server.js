@@ -133,7 +133,7 @@ function createMcpServer(name, abiInfo) {
     async (args) => {
       try {
         const inviteCode = name.split('-').slice(-1)[0];
-        if (!inviteCodeManager.validateCode(inviteCode)) {
+        if (!await inviteCodeManager.validateCode(inviteCode)) {
           return {
             content: [{
               type: "text",
@@ -141,7 +141,7 @@ function createMcpServer(name, abiInfo) {
             }]
           };
         }
-        if (!inviteCodeManager.canAccessServer(inviteCode)) {
+        if (!await inviteCodeManager.canAccessServer(inviteCode)) {
           return {
             content: [{
               type: "text",
@@ -149,7 +149,7 @@ function createMcpServer(name, abiInfo) {
             }]
           };
         }
-        inviteCodeManager.incrementAccess(inviteCode);
+        await inviteCodeManager.incrementAccess(inviteCode);
 
         const txData = await ethereumService.constructTransactionData(
           name,
@@ -184,7 +184,7 @@ function createMcpServer(name, abiInfo) {
     async (args) => {
       try {
         const inviteCode = name.split('-').slice(-1)[0];
-        if (!inviteCodeManager.validateCode(inviteCode)) {
+        if (!await inviteCodeManager.validateCode(inviteCode)) {
           return {
             content: [{
               type: "text",
@@ -192,7 +192,7 @@ function createMcpServer(name, abiInfo) {
             }]
           };
         }
-        if (!inviteCodeManager.canAccessServer(inviteCode)) {
+        if (!await inviteCodeManager.canAccessServer(inviteCode)) {
           return {
             content: [{
               type: "text",
@@ -200,7 +200,7 @@ function createMcpServer(name, abiInfo) {
             }]
           };
         }
-        inviteCodeManager.incrementAccess(inviteCode);
+        await inviteCodeManager.incrementAccess(inviteCode);
 
         const receipt = await ethereumService.sendSignedTransaction(
           name,
@@ -286,28 +286,33 @@ function createMcpServer(name, abiInfo) {
 
 
 // Endpoint to get active servers
-app.get('/active-servers', (c) => {
+app.get('/active-servers', async (c) => {
   const inviteCode = c.req.query('inviteCode');
 
   if (!inviteCode) {
     return c.json({ error: "Invite code is required" }, 400);
   }
 
-  if (!inviteCodeManager.validateCode(inviteCode)) {
+  if (!await inviteCodeManager.validateCode(inviteCode)) {
     return c.json({ error: "Invalid invite code" }, 403);
   }
 
   // Get servers directly from invite code info
-  const codeInfo = inviteCodeManager.getCodeInfo(inviteCode);
+  const codeInfo = await inviteCodeManager.getCodeInfo(inviteCode);
+  if (!codeInfo) {
+    return c.json({ error: "Invalid invite code" }, 403);
+  }
+  console.log(`===> Filtered servers for invite code ${inviteCode}: ${codeInfo.servers}`);
   const filteredServers = codeInfo?.servers || [];
   // Get server details including RPC URLs
-  const serverDetails = filteredServers.map(name => {
-    const serverData = storage.getServer(name);
+  const serverDetailPromises = filteredServers.map(async (name) => {
+    const serverData = await storage.getServer(name);
     return {
       name,
       chainRpcUrl: serverData?.chainRpcUrl || 'Not configured'
     };
   });
+  const serverDetails = await Promise.all(serverDetailPromises);
   console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
   return c.json({
     servers: serverDetails,
@@ -342,18 +347,19 @@ app.get("/server/:name", async (c) => {
   }
 
   // Check if server exists and if new server can be created
-  const serverExists = inviteCodeManager.isServerExist(inviteCode, name);
+  const serverExists = await inviteCodeManager.isServerExist(inviteCode, name);
+  console.log(`===> Server exists: ${serverExists}`, `(type: ${typeof serverExists}, Boolean value: ${Boolean(serverExists)})`);
   if (!serverExists && !await inviteCodeManager.canCreateServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
-  // 检查访问限制
+  // Check access limit
   if (!await inviteCodeManager.canAccessServer(inviteCode)) {
     return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
   // Create new server instance if it doesn't exist
-  if (!serverExists) {
+  if (!serverExists || serverExists === false) {
     console.log(`===> Creating new server instance for name: ${name}`);
 
     if (!chainRpcUrl) {
@@ -370,8 +376,10 @@ app.get("/server/:name", async (c) => {
   }
 
   // Create or get server instance for this name
-  const serverData = storage.getServer(name);
+  const serverData = await storage.getServer(name);
+  console.log(`===> Server data for name ${name}:`, serverData);
   const server = createMcpServer(name, serverData?.abi || []);
+  console.log(`===> Created server instance for server: ${server}`);
 
   return c.json({
     url: `/sse/${name}`,
@@ -404,7 +412,7 @@ app.get("/sse/:name", async (c) => {
     }
   });
 
-  const serverData = storage.getServer(name);
+  const serverData = await storage.getServer(name);
   const server = createMcpServer(name, serverData?.abi || []);
 
   console.log(`Active transports for ${name}`);
@@ -429,7 +437,7 @@ app.post("/messages/:name", async (c) => {
 });
 
 // Simple ping endpoint for API testing
-app.get('/ping', (c) => {
+app.get('/api/ping', (c) => {
   return c.text('pong');
 });
 
@@ -453,9 +461,10 @@ app.post('/api/invite-codes', async (c) => {
     // Generate invite codes
     const newCodes = generateBatch(count);
 
-    // Make sure inviteCodeManager has access to the environment
+    // Make sure inviteCodeManager and storage have access to the environment
     if (c.env) {
       inviteCodeManager.setEnv(c.env);
+      storage.setEnv(c.env);
     } else {
       return c.json({ error: 'Environment not available' }, 500);
     }
@@ -479,10 +488,11 @@ app.get('/', (c) => {
   return c.redirect('/index.html');
 });
 
-// Set environment for inviteCodeManager in Cloudflare environment
+// Set environment for inviteCodeManager and storage in Cloudflare environment
 app.use('*', (c, next) => {
   if (c.env) {
     inviteCodeManager.setEnv(c.env);
+    storage.setEnv(c.env);
   }
   return next();
 });
@@ -499,7 +509,7 @@ async function setupApp() {
 
     // Now we can safely add the static file middleware
     app.use('/*', serveStaticMiddleware({ root: './public' }));
-    
+
     staticMiddlewareInitialized = true;
   }
 

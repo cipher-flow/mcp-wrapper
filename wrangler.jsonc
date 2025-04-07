@@ -24,6 +24,10 @@
         {
             "binding": "KV_INVITE_CODES",
             "id": "cfbcd60e21d342c7ae9d05d1604d51ae"
+        },
+        {
+            "binding": "KV_SERVERS",
+            "id": "54014618638a4b48b97e46d87ae63753"
         }
     ]
 }
