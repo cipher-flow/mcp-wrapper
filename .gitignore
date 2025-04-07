@@ -26,4 +26,6 @@ Thumbs.db
 
 # storage
 storage
+
+# cloudflare
 .wrangler/tmp/*
