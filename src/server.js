@@ -6,7 +6,16 @@ import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
-import { serveStatic } from 'hono/cloudflare-workers';
+
+// Only used in Cloudflare Workers environment
+const isCloudflareEnv = typeof process === 'undefined' || !process.version || process.env.CLOUDFLARE_WORKER || globalThis.Cloudflare;
+let serveStaticMiddleware;
+if (isCloudflareEnv) {
+  // In Cloudflare environment, import cloudflare-workers static file service
+  import('hono/cloudflare-workers').then(({ serveStatic }) => {
+    serveStaticMiddleware = serveStatic;
+  });
+}
 
 const app = new Hono();
 
@@ -415,8 +424,63 @@ app.get('/ping', (c) => {
   return c.text('pong');
 });
 
-// Serve static files
-app.use('/*', serveStatic({ root: './public' }));
+// Root path route, redirects to index.html
+app.get('/', (c) => {
+  return c.redirect('/index.html');
+});
+
+// Configure static file serving middleware
+// For Cloudflare Worker environment
+if (isCloudflareEnv && serveStaticMiddleware) {
+  app.use('/*', serveStaticMiddleware({ root: './public' }));
+}
+
+// For Node.js environment
+if (!isCloudflareEnv) {
+  // Use correct static file middleware approach - for Hono 4.x
+  app.use('/*', async (c, next) => {
+    // Try serving files directly from filesystem
+    try {
+      const path = c.req.path;
+      const filePath = new URL(`../public${path}`, import.meta.url);
+      const fileContent = await import('node:fs/promises')
+        .then(fs => fs.readFile(filePath))
+        .catch(() => null);
+
+      if (fileContent) {
+        // Set appropriate Content-Type
+        const contentType = getContentType(path);
+        c.header('Content-Type', contentType);
+        return c.body(fileContent);
+      }
+    } catch (e) {
+      // Ignore errors and proceed to next middleware
+    }
+
+    return next();
+  });
+
+  console.log('Static file middleware configured for Node.js environment');
+}
+
+// Helper function: Get Content-Type based on file extension
+function getContentType(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  const contentTypes = {
+    'html': 'text/html',
+    'css': 'text/css',
+    'js': 'application/javascript',
+    'json': 'application/json',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'ico': 'image/x-icon'
+  };
+
+  return contentTypes[ext] || 'application/octet-stream';
+}
 
 // Export default function for Cloudflare Workers
 // Ensure we directly export the request handler function, not an object containing it
