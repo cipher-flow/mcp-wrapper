@@ -9,7 +9,7 @@
     "wrangler:deploy": "wrangler deploy --minify",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "npx mocha --experimental-specifier-resolution=node"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -19,11 +19,12 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
     "@hono/node-server": "^1.14.0",
     "chai": "^5.2.0",
     "hono": "^4.7.5",
     "mocha": "^11.1.0",
-    "nodemon": "^3.0.1",
     "wrangler": "^4.7.2"
   }
 }
