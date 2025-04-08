@@ -51,6 +51,18 @@
             <h2>Paste Solidity ABI and get a running MCP(Model Context Protocol) server!</h2>
             <ol>
                 <li><strong>Get an Invite Code</strong>: Obtain an invite code from your friend or <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank">apply by filling this form</a>. Each code can: create up to 100 servers, invoke MCP tools for 10000 times.</li>
+                <li><strong>Smart Contract Interaction Support</strong>:
+                    <ul>
+                        <li><strong>Read Operations</strong>: Full support for all view/pure functions (constant functions that don't modify state)</li>
+                        <li><strong>Write Operations</strong>: Two-step process for state-modifying functions:
+                            <ol>
+                                <li>Transaction Construction: Generate the raw transaction data by using tool of <strong>constructTransactionData</strong></li>
+                                <li>Transaction signing requires your private key and must be handled securely on your side</li>
+                                <li>Transaction Broadcasting: Send your signed transaction to the network by using tool of <strong>sendSignedTransaction</strong></li>
+                            </ol>
+                        </li>
+                    </ul>
+                </li>
                 <li><strong>Create a New Server</strong>: Use your invite code to create a new MCP server by providing:
                     <ul>
                         <li>Invite Code</li>
