@@ -2,15 +2,30 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import express from "express";
 import { z } from "zod";
+import { v4 as uuidv4 } from 'uuid';
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
+import { log } from "./logger.js";
+
+// Add request ID middleware
+const addRequestId = (req, res, next) => {
+  req.requestId = uuidv4();
+  next();
+};
+
 
 const app = express();
 
+// Apply middleware
+app.use(addRequestId);
+app.use(express.json());
+
+
 // Factory function to create configured MCP server instances
 function createMcpServer(name, abiInfo) {
+  log.info('Creating MCP server instance', { serverName: name, abiCount: abiInfo?.length || 0 });
   const server = new McpServer({
     name: name || "MCP Wrapper Server",
     version: "1.0.0"
@@ -18,7 +33,7 @@ function createMcpServer(name, abiInfo) {
 
   // Add dynamic tools for each ABI function
   if (!abiInfo || !Array.isArray(abiInfo)) {
-    console.log(`Invalid ABI info for ${name}`);
+    log.warn(`Invalid ABI info for server`, { serverName: name });
     return server;
   };
   abiInfo.forEach((item) => {
@@ -77,6 +92,12 @@ function createMcpServer(name, abiInfo) {
             }
             // Increment access count for tool usage
             inviteCodeManager.incrementAccess(inviteCode);
+            log.info('Calling contract function', {
+              serverName: name,
+              inviteCode,
+              functionName: args.functionName,
+              contractAddress: args.contractAddress
+            });
             // Call the contract function
             const result = await ethereumService.callContractFunction(
               name,
@@ -85,6 +106,12 @@ function createMcpServer(name, abiInfo) {
               params.map(p => args[p]),
               abiInfo
             );
+            log.info('Contract function call successful', {
+              serverName: name,
+              inviteCode,
+              functionName: args.functionName,
+              result: JSON.stringify(result)
+            });
             return {
               content: [{
                 type: "text",
@@ -92,6 +119,13 @@ function createMcpServer(name, abiInfo) {
               }]
             };
           } catch (error) {
+            log.error(`Error calling contract function`, {
+              serverName: name,
+              inviteCode,
+              functionName: args.functionName,
+              error: error.message,
+              stack: error.stack
+            });
             return {
               content: [{
                 type: "text",
@@ -269,13 +303,16 @@ function createMcpServer(name, abiInfo) {
 
 // Endpoint to get active servers
 app.get('/active-servers', (req, res) => {
+  const context = { requestId: req.requestId };
   const { inviteCode } = req.query;
 
   if (!inviteCode) {
+    log.warn('Missing invite code in active-servers request', context);
     return res.status(400).json({ error: "Invite code is required" });
   }
 
   if (!inviteCodeManager.validateCode(inviteCode)) {
+    log.warn('Invalid invite code in active-servers request', { ...context, inviteCode });
     return res.status(403).json({ error: "Invalid invite code" });
   }
 
@@ -359,36 +396,58 @@ app.get("/server/:name", async (req, res) => {
 // SSE endpoint with name parameter
 app.get("/sse/:name", async (req, res) => {
   const { name } = req.params;
+  const context = { requestId: req.requestId, serverName: name };
+  log.info('Establishing SSE connection', context);
 
   const inviteCode = name.split('-').slice(-1)[0];
   if (!inviteCodeManager.isServerExist(inviteCode, name)) {
+    log.warn('SSE connection failed - server not found', context);
     return res.status(404).send(`No server found for name ${name}`);
   }
 
   const transport = new SSEServerTransport(`/messages/${name}`, res);
   transports[name] = transports[name] || {};
   transports[name][transport.sessionId] = transport;
+  log.info('SSE transport created', { ...context, sessionId: transport.sessionId });
 
   res.on("close", () => {
+    log.info('SSE connection closed', { ...context, sessionId: transport.sessionId });
     delete transports[name][transport.sessionId];
     if (Object.keys(transports[name]).length === 0) {
       delete transports[name];
+      log.info('All transports removed for server', context);
     }
   });
   const serverData = storage.getServer(name);
   const server = createMcpServer(name, serverData?.abi || []);
 
-  await server.connect(transport);
+  try {
+    await server.connect(transport);
+    log.info('Server connected to transport successfully', context);
+  } catch (error) {
+    log.error('Failed to connect server to transport', { ...context, error: error.message, stack: error.stack });
+    res.status(500).send('Failed to establish connection');
+  }
 });
 
 // Message endpoint with name parameter
 app.post("/messages/:name", async (req, res) => {
   const { name } = req.params;
   const sessionId = req.query.sessionId;
+  const context = { requestId: req.requestId, serverName: name, sessionId };
+  log.info('Handling message request', { ...context, body: JSON.stringify(req.body) });
+
   const transport = transports[name]?.[sessionId];
   if (transport) {
-    await transport.handlePostMessage(req, res);
+    try {
+      await transport.handlePostMessage(req, res);
+      log.info('Message handled successfully', context);
+    } catch (error) {
+      log.error('Error handling message', { ...context, error: error.message, stack: error.stack });
+      res.status(500).send('Internal server error');
+    }
   } else {
+    log.warn('No transport found for message', context);
     res.status(400).send(`No transport found for name ${name} and sessionId ${sessionId}`);
   }
 });
@@ -398,5 +457,5 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Express Server running on port ${PORT}`);
+  log.info(`Express Server running on port ${PORT}`);
 });
