@@ -29,3 +29,5 @@ storage
 
 # cloudflare
 .wrangler/
+
+.wrangler
