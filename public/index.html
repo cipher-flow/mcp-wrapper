@@ -63,41 +63,17 @@
     <h1>MCP Wrapper</h1>
     <div class="container">
         <div class="user-guide">
-            <h2>Convert Solidity ABI to MCP(Model Context Protocol) server</h2>
-            <h3>Video Guide</h3>
-            <div class="video-container">
-                <iframe src="https://www.youtube.com/embed/WJr1Qgxd5wQ" title="MCP Wrapper Tutorial" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-            </div>
-            <ol>
-                <li><strong>Get an Invite Code</strong>: Obtain an invite code from your friend or <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank">apply by filling this form</a>. Each code can: create up to 100 servers, invoke MCP tools for 10000 times.</li>
-                <li><strong>Smart Contract Interaction Support</strong>:
-                    <ul>
-                        <li><strong>Read Operations</strong>: Full support for all view/pure functions (constant functions that don't modify state)</li>
-                        <li><strong>Write Operations</strong>: Two-step process for state-modifying functions:
-                            <ol>
-                                <li>Transaction Construction: Generate the raw transaction data by using tool of <strong>constructTransactionData</strong></li>
-                                <li>Transaction signing requires your private key and must be handled securely on your side</li>
-                                <li>Transaction Broadcasting: Send your signed transaction to the network by using tool of <strong>sendSignedTransaction</strong></li>
-                            </ol>
-                        </li>
-                    </ul>
-                </li>
-                <li><strong>Create a New Server</strong>: Use your invite code to create a new MCP server by providing:
-                    <ul>
-                        <li>Invite Code</li>
-                        <li>Server Name</li>
-                        <li>Chain RPC URL</li>
-                        <li>Smart Contract ABI</li>
-                    </ul>
-                </li>
-                <li><strong>Access Your Servers</strong>: Enter your invite code to view all servers created with that code.</li>
-            </ol>
+            <h2>Convert Solidity Application Binary Interface (ABI) to Model Context Protocol(MCP) server</h2>
+            <p>Welcome to MCP Wrapper! For detailed instructions and API documentation, please visit our <a href="/docs/" style="color: #007bff; text-decoration: underline;">Documentation Page</a>.</p>
         </div>
     </div>
     <div class="forms-container">
         <h2>Create MCP Server with ABI</h2>
         <form id="serverForm">
-            <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
+                <small style="color: #6c757d;">Need an invite code? <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank" style="color: #007bff;">Request one here</a></small>
+            </div>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
             <input type="text" id="chainRpcUrlInput" placeholder="Enter Chain RPC URL..." required>
             <textarea id="abiInput" placeholder="Enter ABI (Array or JSON format)..."></textarea>
