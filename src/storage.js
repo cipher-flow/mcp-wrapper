@@ -10,6 +10,7 @@ class Storage {
 
   // Set the environment - called from the worker handler
   setEnv(env) {
+    console.log('Setting environment for Storage');
     this.env = env;
   }
 
@@ -39,7 +40,7 @@ class Storage {
       if (!this.env) {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
-      
+
       return await this.env.KV_SERVERS.get(name, { type: 'json' });
     } catch (error) {
       console.error(`Error getting server ${name} from KV:`, error);
@@ -52,15 +53,15 @@ class Storage {
       if (!this.env) {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
-      
+
       const servers = {};
       const listResult = await this.env.KV_SERVERS.list();
-      
+
       const promises = listResult.keys.map(async (key) => {
         const value = await this.env.KV_SERVERS.get(key.name, { type: 'json' });
         servers[key.name] = value;
       });
-      
+
       await Promise.all(promises);
       return servers;
     } catch (error) {

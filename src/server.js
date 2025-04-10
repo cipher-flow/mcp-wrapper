@@ -37,11 +37,25 @@ export class McpObject extends DurableObject {
     super(state, env);
     this.state = state;
     this.server = null; // Will be initialized in fetch
+
+    // Set environment for managers in Durable Object
+    if (env) {
+      console.log('Setting environment in McpObject constructor');
+      inviteCodeManager.setEnv(env);
+      storage.setEnv(env);
+    }
   }
 
   async fetch(request) {
     const url = new URL(request.url);
     console.log('McpObject Request URL:', url.toString());
+
+    // Ensure environment is set for every request in the Durable Object
+    if (this.state.id && this.state.id.env) {
+      console.log('Setting environment in McpObject fetch');
+      inviteCodeManager.setEnv(this.state.id.env);
+      storage.setEnv(this.state.id.env);
+    }
 
     // Extract name from the URL path
     const pathParts = url.pathname.split('/');
@@ -436,7 +450,9 @@ app.get("/server/:name", async (c) => {
 
   // Create a new Durable Object for this server
   const objectId = c.env.MCP_OBJECT.newUniqueId();
+  console.log("===> Created Durable Object with objectId:", objectId);
   const sessionId = objectId.toString();
+  console.log("===> Created Durable Object with sessionId:", sessionId);
 
   console.log(`===> Created Durable Object with sessionId: ${sessionId}`);
 
@@ -603,6 +619,13 @@ let initializedApp = null;
 
 export default {
   fetch: async (request, env, ctx) => {
+    // Set environment for managers at the top level of every request
+    if (env) {
+      console.log('Setting environment in main fetch handler');
+      inviteCodeManager.setEnv(env);
+      storage.setEnv(env);
+    }
+
     // Only set up the app once
     if (!initializedApp) {
       initializedApp = await setupApp();
