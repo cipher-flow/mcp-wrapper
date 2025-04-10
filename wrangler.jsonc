@@ -41,7 +41,7 @@
     "migrations": [
         {
             "tag": "v1",
-            "new_classes": ["McpObject"]
+            "new_sqlite_classes": ["McpObject"]
         }
     ]
 }
