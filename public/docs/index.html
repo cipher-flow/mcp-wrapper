@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Wrapper Documentation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .documentation {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .documentation h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .tab-container {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .tab-buttons {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .tab-button {
+            padding: 10px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .tab-button.active {
+            background: #fff;
+            border-bottom: 2px solid #007bff;
+            color: #007bff;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background: #fff;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        code {
+            font-family: 'Courier New', Courier, monospace;
+        }
+        ul, ol {
+            padding-left: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .home-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #007bff;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        .home-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="home-link">← Back to Home</a>
+    <h1>MCP Wrapper Documentation</h1>
+
+    <div class="documentation">
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-button active" onclick="showTab('overview')">Overview</button>
+                <button class="tab-button" onclick="showTab('getting-started')">Getting Started</button>
+                <button class="tab-button" onclick="showTab('api-reference')">API Reference</button>
+            </div>
+
+            <div id="overview" class="tab-content active">
+                <h2>Introduction</h2>
+                <p>MCP Wrapper is a powerful tool that automatically converts Solidity ABI into an MCP (Model Context Protocol) Server, streamlining blockchain development workflows. By eliminating the need for custom MCP code or server management, developers can instantly interact with smart contracts through a ready-to-use MCP Server URL.</p>
+
+                <h3>Video Tutorial (Chinese Version)</h3>
+                <div class="video-container">
+                    <iframe src="https://www.youtube.com/embed/WJr1Qgxd5wQ" title="MCP Wrapper Tutorial (Chinese)" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+
+                <h3>Key Features</h3>
+                <ul>
+                    <li><strong>Automated Solidity ABI Conversion</strong>: Transform smart contract ABIs into fully functional MCP Servers with minimal setup</li>
+                    <li><strong>Comprehensive Smart Contract Integration</strong>:
+                        <ul>
+                            <li><strong>Read Operations</strong>: Full support for view and pure functions</li>
+                            <li><strong>Write Operations</strong>: Secure transaction handling with a three-step process</li>
+                        </ul>
+                    </li>
+                    <li><strong>Developer-Friendly</strong>: Simple setup process with clear documentation</li>
+                    <li><strong>Secure Design</strong>: Private keys are never handled by the server</li>
+                </ul>
+            </div>
+
+            <div id="getting-started" class="tab-content">
+                <h2>Getting Started</h2>
+
+                <h3>1. Obtain an Invite Code</h3>
+                <ul>
+                    <li>Access to MCP Wrapper requires an invite code</li>
+                    <li>Request an invite code through:
+                        <ul>
+                            <li>Referral from existing users</li>
+                            <li>Application form at <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank">https://forms.gle/eUbXK7NgNwRnztRJA</a></li>
+                        </ul>
+                    </li>
+                    <li>Each invite code enables:
+                        <ul>
+                            <li>Creation of up to 100 servers</li>
+                            <li>10,000 MCP tool calls</li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <h3>2. Set Up Your MCP Server</h3>
+                <ol>
+                    <li>Navigate to <a href="https://mcpwrapper.xyz/" target="_blank">https://mcpwrapper.xyz/</a></li>
+                    <li>Create a new server with the following information:
+                        <ul>
+                            <li><strong>Invite Code</strong>: Your valid access code</li>
+                            <li><strong>Server Name</strong>: Choose a descriptive identifier</li>
+                            <li><strong>Chain RPC URL</strong>: Blockchain network endpoint</li>
+                            <li><strong>Smart Contract ABI</strong>: Contract interface in JSON format</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3>Example ABI Format</h3>
+                <pre><code>[
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "totalSupply",
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            {
+                "name": "_to",
+                "type": "address"
+            },
+            {
+                "name": "_value",
+                "type": "uint256"
+            }
+        ],
+        "name": "transfer",
+        "outputs": [],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]</code></pre>
+            </div>
+
+            <div id="api-reference" class="tab-content">
+                <h2>API Reference</h2>
+
+                <h3>Smart Contract Interaction Support</h3>
+                <ul>
+                    <li><strong>Read Operations</strong>: Full support for all view/pure functions (constant functions that don't modify state)</li>
+                    <li><strong>Write Operations</strong>: Three-step process for state-modifying functions:
+                        <ol>
+                            <li><strong>Transaction Construction</strong>: Generate transaction data using the <code>constructTransactionData</code> tool by providing function name and parameters</li>
+                            <li><strong>Local Transaction Signing</strong>: Sign transactions securely on your machine using your private key (MCP Wrapper never handles private keys)</li>
+                            <li><strong>Network Broadcasting</strong>: Submit signed transactions to the blockchain using the <code>sendSignedTransaction</code> tool</li>
+                        </ol>
+                    </li>
+                </ul>
+
+                <h3>Security Considerations</h3>
+                <ul>
+                    <li><strong>Invite Code Security</strong>: Protect your invite code to maintain server access control</li>
+                    <li><strong>Private Key Management</strong>: Never share private keys; all signing occurs locally</li>
+                    <li><strong>Transaction Verification</strong>: Review transaction data before signing</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            document.getElementById(tabId).classList.add('active');
+            document.querySelector(`[onclick="showTab('${tabId}')"]`).classList.add('active');
+        }
+    </script>
+</body>
+</html>

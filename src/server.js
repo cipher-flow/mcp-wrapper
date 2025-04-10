@@ -2,12 +2,20 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { Hono } from 'hono';
 import { DurableObject } from 'cloudflare:workers';
 import { z } from "zod";
+import { v4 as uuidv4 } from 'uuid';
 import { SSEEdgeTransport } from "./sseEdge.js";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
 import { inviteCodeManager } from "./inviteCode.js";
 import { generateBatch, saveInviteCodes } from "../scripts/generateInviteCodes.js";
+import { log } from "./logger.js";
+
+// Create Hono app instance - this should only happen once at the module level
+const app = new Hono();
+
+// Apply the request ID middleware to all routes
+app.use('*', addRequestId);
 
 // In Cloudflare environment, import cloudflare-workers static file service
 let serveStaticMiddleware = null;
@@ -18,14 +26,19 @@ const importStaticMiddleware = async () => {
     const { serveStatic } = await import('hono/cloudflare-workers');
     return serveStatic;
   } catch (error) {
-    console.error('Failed to import serveStatic middleware:', error);
+    log.error('Failed to import serveStatic middleware', { error: error.message, stack: error.stack });
     // Fallback function that returns a 404 response
     return () => (c) => c.text('Static file service not available', 404);
   }
 };
 
-// Create Hono app instance - this should only happen once at the module level
-const app = new Hono();
+// Add request ID middleware for Hono
+const addRequestId = async (c, next) => {
+  // Generate a unique request ID and add it to the context
+  c.set('requestId', uuidv4());
+  await next();
+};
+
 
 // McpObject class for Durable Objects implementation
 export class McpObject extends DurableObject {
@@ -40,7 +53,10 @@ export class McpObject extends DurableObject {
 
     // Set environment for managers in Durable Object
     if (env) {
-      console.log('Setting environment in McpObject constructor');
+      // Initialize logger with environment
+      log.init(env);
+
+      log.info('Setting environment in McpObject constructor');
       inviteCodeManager.setEnv(env);
       storage.setEnv(env);
     }
@@ -48,11 +64,13 @@ export class McpObject extends DurableObject {
 
   async fetch(request) {
     const url = new URL(request.url);
-    console.log('McpObject Request URL:', url.toString());
+    const sessionId = this.state.id.toString();
+    const context = { sessionId };
+    log.info('McpObject Request URL', { ...context, url: url.toString() });
 
     // Ensure environment is set for every request in the Durable Object
     if (this.state.id && this.state.id.env) {
-      console.log('Setting environment in McpObject fetch');
+      log.info('Setting environment in McpObject fetch', context);
       inviteCodeManager.setEnv(this.state.id.env);
       storage.setEnv(this.state.id.env);
     }
@@ -67,30 +85,29 @@ export class McpObject extends DurableObject {
       const serverData = await storage.getServer(name);
       if (serverData) {
         this.server = createMcpServer(name, serverData?.abi || []);
-        console.log(`Initialized server for ${name} in Durable Object`);
+        log.info(`Initialized server in Durable Object`, { ...context, serverName: name });
       } else {
         // If no server data, create a default server
         this.server = createMcpServer(name, []);
-        console.log(`Created default server for ${name} in Durable Object`);
+        log.info(`Created default server in Durable Object`, { ...context, serverName: name });
       }
     }
 
     // Create transport if not exists
     if (!this.transport) {
       // Use the Durable Object ID as the session ID
-      const sessionId = this.state.id.toString();
-      console.log(`Creating transport with sessionId: ${sessionId}`);
+      log.info(`Creating transport`, { ...context, serverName: name });
       this.transport = new SSEEdgeTransport('/messages', sessionId);
     }
 
     if (request.method === 'GET' && url.pathname.endsWith('/sse')) {
-      console.log(`Connecting server with transport, sessionId: ${this.transport.sessionId}`);
+      log.info(`Connecting server with transport`, { ...context, serverName: name });
       await this.server.connect(this.transport);
       return this.transport.sseResponse;
     }
 
     if (request.method === 'POST' && url.pathname.endsWith('/messages')) {
-      console.log(`Handling message for sessionId: ${this.transport.sessionId}`);
+      log.info(`Handling message`, { ...context, serverName: name });
       return this.transport.handlePostMessage(request);
     }
 
@@ -100,6 +117,7 @@ export class McpObject extends DurableObject {
 
 // Factory function to create configured MCP server instances
 function createMcpServer(name, abiInfo) {
+  log.info('Creating MCP server instance', { serverName: name, abiCount: abiInfo?.length || 0 });
   const server = new McpServer({
     name: name || "MCP Wrapper Server",
     version: "1.0.0"
@@ -107,7 +125,7 @@ function createMcpServer(name, abiInfo) {
 
   // Add dynamic tools for each ABI function
   if (!abiInfo || !Array.isArray(abiInfo)) {
-    console.log(`Invalid ABI info for ${name}`);
+    log.warn(`Invalid ABI info for server`, { serverName: name });
     return server;
   }
 
@@ -147,8 +165,11 @@ function createMcpServer(name, abiInfo) {
           try {
             // get invite code from name(name-inviteCode)
             const inviteCode = name.split('-').slice(-1)[0];
+            const context = { serverName: name, inviteCode, functionName: args.functionName };
+
             // Validate invite code
             if (!(await inviteCodeManager.validateCode(inviteCode))) {
+              log.warn('Invalid invite code in tool call', context);
               return {
                 content: [{
                   type: "text",
@@ -158,6 +179,7 @@ function createMcpServer(name, abiInfo) {
             }
             // Check access limit
             if (!(await inviteCodeManager.canAccessServer(inviteCode))) {
+              log.warn('Invite code reached maximum access limit', context);
               return {
                 content: [{
                   type: "text",
@@ -167,6 +189,12 @@ function createMcpServer(name, abiInfo) {
             }
             // Increment access count for tool usage
             await inviteCodeManager.incrementAccess(inviteCode);
+
+            log.info('Calling contract function', {
+              ...context,
+              contractAddress: args.contractAddress
+            });
+
             // Call the contract function
             const result = await ethereumService.callContractFunction(
               name,
@@ -175,6 +203,12 @@ function createMcpServer(name, abiInfo) {
               params.map(p => args[p]),
               abiInfo
             );
+
+            log.info('Contract function call successful', {
+              ...context,
+              result: JSON.stringify(result)
+            });
+
             return {
               content: [{
                 type: "text",
@@ -182,6 +216,13 @@ function createMcpServer(name, abiInfo) {
               }]
             };
           } catch (error) {
+            log.error(`Error calling contract function`, {
+              serverName: name,
+              functionName: args.functionName,
+              error: error.message,
+              stack: error.stack
+            });
+
             return {
               content: [{
                 type: "text",
@@ -355,27 +396,31 @@ function createMcpServer(name, abiInfo) {
   return server;
 }
 
-
-
 // Endpoint to get active servers
 app.get('/active-servers', async (c) => {
   const inviteCode = c.req.query('inviteCode');
+  const context = { requestId: c.get('requestId'), inviteCode };
 
   if (!inviteCode) {
+    log.warn('Missing invite code in active-servers request', context);
     return c.json({ error: "Invite code is required" }, 400);
   }
 
   if (!await inviteCodeManager.validateCode(inviteCode)) {
+    log.warn('Invalid invite code in active-servers request', context);
     return c.json({ error: "Invalid invite code" }, 403);
   }
 
   // Get servers directly from invite code info
   const codeInfo = await inviteCodeManager.getCodeInfo(inviteCode);
   if (!codeInfo) {
+    log.warn('Invalid invite code info in active-servers request', context);
     return c.json({ error: "Invalid invite code" }, 403);
   }
-  console.log(`===> Filtered servers for invite code ${inviteCode}: ${codeInfo.servers}`);
+
+  log.info('Retrieving servers for invite code', context);
   const filteredServers = codeInfo?.servers || [];
+
   // Get server details including RPC URLs
   const serverDetailPromises = filteredServers.map(async (name) => {
     const serverData = await storage.getServer(name);
@@ -385,7 +430,8 @@ app.get('/active-servers', async (c) => {
     };
   });
   const serverDetails = await Promise.all(serverDetailPromises);
-  console.log(`===> Filtered servers for invite code ${inviteCode}: ${filteredServers.join(', ')}`);
+
+  log.info('Retrieved server details', { ...context, serverCount: serverDetails.length });
   return c.json({
     servers: serverDetails,
   });
@@ -397,64 +443,74 @@ app.get("/server/:name", async (c) => {
   const abi = c.req.query('abi');
   const inviteCode = c.req.query('inviteCode');
   const chainRpcUrl = c.req.query('chainRpcUrl');
-  console.log(`===> Received request for server with name: ${name}`);
+  const context = { requestId: c.get('requestId'), inviteCode, serverName: name };
+
+  log.info('Received request for server', context);
+
   // Combine name and inviteCode
   name = `${name}-${inviteCode}`;
-  console.log(`===> Server name with invite code: ${name}`);
+
+  log.info('Server name with invite code', { ...context, fullServerName: name });
 
   if (!name) {
+    log.warn('Missing server name', context);
     return c.json({ error: 'Server name is required' }, 400);
   }
 
   if (!inviteCode) {
+    log.warn('Missing invite code', context);
     return c.json({ error: 'Invite code is required' }, 400);
   }
 
   // Validate invite code
   if (!await inviteCodeManager.validateCode(inviteCode)) {
+    log.warn('Invalid invite code', context);
     return c.json({ error: 'Invalid invite code' }, 403);
   }
 
   // Check if server exists and if new server can be created
   const serverExists = await inviteCodeManager.isServerExist(inviteCode, name);
-  console.log(`===> Server exists: ${serverExists}`, `(type: ${typeof serverExists}, Boolean value: ${Boolean(serverExists)})`);
+  log.info('Server existence check', { ...context, exists: serverExists });
+
   if (!serverExists && !await inviteCodeManager.canCreateServer(inviteCode)) {
+    log.warn('Invite code reached maximum server limit', context);
     return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
   }
 
   // Check access limit
   if (!await inviteCodeManager.canAccessServer(inviteCode)) {
+    log.warn('Invite code reached maximum access limit', context);
     return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
   // Create new server instance if it doesn't exist
   if (!serverExists || serverExists === false) {
-    console.log(`===> Creating new server instance for name: ${name}`);
+    log.info('Creating new server instance', context);
 
     if (!chainRpcUrl) {
+      log.warn('Missing Chain RPC URL for new server', context);
       return c.json({ error: 'Chain RPC URL is required when creating a new server' }, 400);
     }
     try {
       const parsed = abiParser.parseAndStore(abi);
       const abiInfo = parsed.raw; // Get the raw ABI array
-      await storage.saveServer(name, {chainRpcUrl: chainRpcUrl, abi: abiInfo}); // Persist to storage with RPC URL
+      await storage.saveServer(name, { chainRpcUrl: chainRpcUrl, abi: abiInfo }); // Persist to storage with RPC URL
       await inviteCodeManager.addServerToCode(inviteCode, name); // Track server creation with invite code
+      log.info('Server created successfully', { ...context, abiCount: abiInfo.length });
     } catch (error) {
+      log.error('Failed to parse ABI', { ...context, error: error.message });
       return c.json({ error: `Invalid ABI: ${error.message}` }, 400);
     }
   }
 
   // Create or get server instance for this name
   const serverData = await storage.getServer(name);
-  console.log(`===> Server data for name ${name}:`, serverData);
+  log.info('Retrieved server data', { ...context, hasData: !!serverData });
 
   // Create a new Durable Object for this server
   const objectId = c.env.MCP_OBJECT.newUniqueId();
-  console.log("===> Created Durable Object with objectId:", objectId);
   const sessionId = objectId.toString();
-  console.log("===> Created Durable Object with sessionId:", sessionId);
-
-  console.log(`===> Created Durable Object with sessionId: ${sessionId}`);
+  log.info('Created Durable Object', { ...context, sessionId });
 
   return c.json({
     url: `/sse/${name}?sessionId=${sessionId}`,
@@ -466,12 +522,14 @@ app.get("/server/:name", async (c) => {
 // SSE endpoint with name parameter - using Durable Object pattern
 app.get("/sse/:name", async (c) => {
   const name = c.req.param('name');
-  console.log(`===> Received SSE connection request for name: ${name}`);
-
   const inviteCode = name.split('-').slice(-1)[0];
+  const context = { requestId: c.get('requestId'), serverName: name, inviteCode };
+
+  log.info('Received SSE connection request', context);
+
   const serverExists = await inviteCodeManager.isServerExist(inviteCode, name);
   if (!serverExists) {
-    console.log(`===> Server instance not found for name: ${name}`);
+    log.warn('Server instance not found', context);
     return c.text(`No server found for name ${name}`, 404);
   }
 
@@ -480,17 +538,24 @@ app.get("/sse/:name", async (c) => {
   const objectId = sessionId ? c.env.MCP_OBJECT.idFromString(sessionId) : c.env.MCP_OBJECT.newUniqueId();
   const object = c.env.MCP_OBJECT.get(objectId);
 
+  log.info('Forwarding SSE request to Durable Object', { ...context, sessionId });
+
   // Forward the request to the Durable Object
   return object.fetch(new Request(`${c.req.url}/sse`));
 });
 
 // Message endpoint with name parameter - using Durable Object pattern
 app.post("/messages/:name", async (c) => {
+  const name = c.req.param('name');
   const sessionId = c.req.query('sessionId');
+  const context = { requestId: c.get('requestId'), serverName: name, sessionId };
 
   if (!sessionId) {
+    log.warn('Missing session ID in message request', context);
     return c.text('Session ID is required', 400);
   }
+
+  log.info('Handling message request', context);
 
   // Get the Durable Object for this session
   const objectId = c.env.MCP_OBJECT.idFromString(sessionId);
@@ -503,6 +568,48 @@ app.post("/messages/:name", async (c) => {
 // Simple ping endpoint for API testing
 app.get('/api/ping', (c) => {
   return c.text('pong');
+});
+
+// Add Etherscan ABI fetching endpoint
+app.get('/api/fetch-abi', async (c) => {
+  const address = c.req.query('address');
+  const context = { requestId: c.get('requestId') };
+
+  if (!address) {
+    log.warn('Missing contract address in fetch-abi request', context);
+    return c.json({ error: 'Contract address is required' }, 400);
+  }
+
+  const etherscanApiKey = c.env.ETHERSCAN_API_KEY;
+  if (!etherscanApiKey) {
+    log.error('Etherscan API key not configured', context);
+    return c.json({ error: 'Etherscan API key not configured' }, 500);
+  }
+
+  try {
+    log.info('Fetching ABI from Etherscan', { ...context, address });
+    const response = await fetch(
+      `https://api.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
+    );
+    const data = await response.json();
+
+    if (data.status === '0') {
+      log.warn('Etherscan API returned error', { ...context, error: data.result });
+      return c.json({ error: data.result }, 400);
+    }
+
+    try {
+      const abi = JSON.parse(data.result);
+      log.info('Successfully fetched ABI from Etherscan', { ...context, address });
+      return c.json({ abi });
+    } catch (e) {
+      log.error('Invalid ABI format received from Etherscan', { ...context, error: e.message });
+      return c.json({ error: 'Invalid ABI format received from Etherscan' }, 400);
+    }
+  } catch (error) {
+    log.error('Failed to fetch ABI from Etherscan', { ...context, error: error.message, stack: error.stack });
+    return c.json({ error: 'Failed to fetch ABI from Etherscan' }, 500);
+  }
 });
 
 // Generate invite codes API
@@ -599,7 +706,7 @@ async function setupApp() {
     try {
       // Get the static file middleware
       serveStaticMiddleware = await importStaticMiddleware();
-      console.log('Static middleware initialized successfully');
+      log.info('Static middleware initialized successfully');
 
       // Now we can safely add the static file middleware
       // Note: We're not using app.use here to avoid middleware conflicts
@@ -607,7 +714,7 @@ async function setupApp() {
 
       staticMiddlewareInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize static middleware:', error);
+      log.error('Failed to initialize static middleware', { error: error.message, stack: error.stack });
     }
   }
 
@@ -621,13 +728,17 @@ export default {
   fetch: async (request, env, ctx) => {
     // Set environment for managers at the top level of every request
     if (env) {
-      console.log('Setting environment in main fetch handler');
+      // Initialize logger with environment
+      log.init(env);
+
+      log.info('Setting environment in main fetch handler');
       inviteCodeManager.setEnv(env);
       storage.setEnv(env);
     }
 
     // Only set up the app once
     if (!initializedApp) {
+      log.info('Initializing Hono app');
       initializedApp = await setupApp();
     }
     return initializedApp.fetch(request, env, ctx);

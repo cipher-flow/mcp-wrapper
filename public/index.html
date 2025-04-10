@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -42,46 +42,48 @@
         button:hover {
             background-color: #0056b3;
         }
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            margin: 20px 0;
+        }
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
     <h1>MCP Wrapper</h1>
     <div class="container">
         <div class="user-guide">
-            <h2>Paste Solidity ABI and get a running MCP(Model Context Protocol) server!</h2>
-            <ol>
-                <li><strong>Get an Invite Code</strong>: Obtain an invite code from your friend or <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank">apply by filling this form</a>. Each code can: create up to 100 servers, invoke MCP tools for 10000 times.</li>
-                <li><strong>Smart Contract Interaction Support</strong>:
-                    <ul>
-                        <li><strong>Read Operations</strong>: Full support for all view/pure functions (constant functions that don't modify state)</li>
-                        <li><strong>Write Operations</strong>: Two-step process for state-modifying functions:
-                            <ol>
-                                <li>Transaction Construction: Generate the raw transaction data by using tool of <strong>constructTransactionData</strong></li>
-                                <li>Transaction signing requires your private key and must be handled securely on your side</li>
-                                <li>Transaction Broadcasting: Send your signed transaction to the network by using tool of <strong>sendSignedTransaction</strong></li>
-                            </ol>
-                        </li>
-                    </ul>
-                </li>
-                <li><strong>Create a New Server</strong>: Use your invite code to create a new MCP server by providing:
-                    <ul>
-                        <li>Invite Code</li>
-                        <li>Server Name</li>
-                        <li>Chain RPC URL</li>
-                        <li>Smart Contract ABI</li>
-                    </ul>
-                </li>
-                <li><strong>Access Your Servers</strong>: Enter your invite code to view all servers created with that code.</li>
-            </ol>
+            <h2>Convert Solidity Application Binary Interface (ABI) to Model Context Protocol(MCP) server</h2>
+            <p>Welcome to MCP Wrapper! For detailed instructions and API documentation, please visit our <a href="/docs/" style="color: #007bff; text-decoration: underline;">Documentation Page</a>.</p>
         </div>
     </div>
     <div class="forms-container">
         <h2>Create MCP Server with ABI</h2>
         <form id="serverForm">
-            <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <input type="text" id="createInviteCodeInput" placeholder="Enter invite code..." required>
+                <small style="color: #6c757d;">Need an invite code? <a href="https://forms.gle/eUbXK7NgNwRnztRJA" target="_blank" style="color: #007bff;">Request one here</a></small>
+            </div>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
             <input type="text" id="chainRpcUrlInput" placeholder="Enter Chain RPC URL..." required>
-            <textarea id="abiInput" placeholder="Enter ABI (JSON format)..."></textarea>
+            <div style="display: flex; gap: 30px; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <input type="text" id="contractAddressInput" placeholder="Enter contract address to fetch ABI from Etherscan..." style="width: 100%;">
+                    <small style="color: #6c757d;">Or paste ABI manually below</small>
+                </div>
+                <button type="button" id="fetchAbiBtn" style="white-space: nowrap;">Fetch ABI</button>
+            </div>
+            <textarea id="abiInput" placeholder="Enter ABI (Array or JSON format)..." required></textarea>
             <button type="submit">Create Server</button>
         </form>
         <div id="serverList">
@@ -161,6 +163,31 @@
         const serverForm = document.getElementById('serverForm');
         const serverNameInput = document.getElementById('serverNameInput');
         const abiInput = document.getElementById('abiInput');
+        const contractAddressInput = document.getElementById('contractAddressInput');
+        const fetchAbiBtn = document.getElementById('fetchAbiBtn');
+
+        fetchAbiBtn.addEventListener('click', async () => {
+            const contractAddress = contractAddressInput.value.trim();
+            if (!contractAddress) {
+                alert('Please enter a contract address');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/fetch-abi?address=${encodeURIComponent(contractAddress)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                abiInput.value = JSON.stringify(data.abi, null, 2);
+            } catch (error) {
+                alert(`Failed to fetch ABI: ${error.message}`);
+            }
+        });
 
         serverForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -170,8 +197,32 @@
             const chainRpcUrl = document.getElementById('chainRpcUrlInput').value.trim();
 
             try {
-                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}&chainRpcUrl=${encodeURIComponent(chainRpcUrl)}`);
-                const data = await response.json();
+                console.log('Sending ABI data:', {
+                    serverName,
+                    abiLength: abi.length,
+                    chainRpcUrl
+                });
+                const response = await fetch(`/server/${serverName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        abi,
+                        inviteCode,
+                        chainRpcUrl
+                    })
+                });
+                const responseText = await response.text();
+                console.log('Server response text:', responseText);
+
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Failed to parse server response:', parseError);
+                    throw new Error(`Server returned invalid JSON: ${responseText}`);
+                }
 
                 if (data.error) {
                     alert(data.error);
@@ -195,7 +246,12 @@
                     removeServer(serverName);
                 };
             } catch (error) {
-                alert('Failed to create server');
+                let errorMessage = 'Failed to create server';
+                if (error.message) {
+                    errorMessage = `${errorMessage}: ${error.message}`;
+                }
+                alert(errorMessage);
+                console.error('Server creation error:', error);
             }
         });
 

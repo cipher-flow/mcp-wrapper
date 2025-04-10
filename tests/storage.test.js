@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { storage, Storage } from '../src/storage.js';
 import fs from 'fs';
 import path from 'path';

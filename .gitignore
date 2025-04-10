@@ -27,5 +27,8 @@ Thumbs.db
 # storage
 storage
 
+# Log files
+logs/
+
 # cloudflare
 .wrangler/
