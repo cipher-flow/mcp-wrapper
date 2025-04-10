@@ -29,5 +29,19 @@
             "binding": "KV_SERVERS",
             "id": "54014618638a4b48b97e46d87ae63753"
         }
+    ],
+    "durable_objects": {
+        "bindings": [
+            {
+                "name": "MCP_OBJECT",
+                "class_name": "McpObject"
+            }
+        ]
+    },
+    "migrations": [
+        {
+            "tag": "v1",
+            "new_classes": ["McpObject"]
+        }
     ]
 }

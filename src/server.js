@@ -1,8 +1,8 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
-import { SSETransport } from 'hono-mcp-server-sse-transport';
+import { DurableObject } from 'cloudflare:workers';
 import { z } from "zod";
+import { SSEEdgeTransport } from "./sseEdge.js";
 import { ethereumService } from "./ethereum.js";
 import { abiParser } from "./abiParser.js";
 import { storage } from "./storage.js";
@@ -26,6 +26,63 @@ const importStaticMiddleware = async () => {
 
 // Create Hono app instance - this should only happen once at the module level
 const app = new Hono();
+
+// McpObject class for Durable Objects implementation
+export class McpObject extends DurableObject {
+  transport;
+  server;
+  state;
+
+  constructor(state, env) {
+    super(state, env);
+    this.state = state;
+    this.server = null; // Will be initialized in fetch
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    console.log('McpObject Request URL:', url.toString());
+
+    // Extract name from the URL path
+    const pathParts = url.pathname.split('/');
+    const name = pathParts[pathParts.length - 2]; // Get the name from the path
+
+    // Initialize server if not already done
+    if (!this.server) {
+      // Get server data from storage
+      const serverData = await storage.getServer(name);
+      if (serverData) {
+        this.server = createMcpServer(name, serverData?.abi || []);
+        console.log(`Initialized server for ${name} in Durable Object`);
+      } else {
+        // If no server data, create a default server
+        this.server = createMcpServer(name, []);
+        console.log(`Created default server for ${name} in Durable Object`);
+      }
+    }
+
+    // Create transport if not exists
+    if (!this.transport) {
+      // Use the Durable Object ID as the session ID
+      const sessionId = this.state.id.toString();
+      console.log(`Creating transport with sessionId: ${sessionId}`);
+      this.transport = new SSEEdgeTransport('/messages', sessionId);
+    }
+
+    if (request.method === 'GET' && url.pathname.endsWith('/sse')) {
+      console.log(`Connecting server with transport, sessionId: ${this.transport.sessionId}`);
+      await this.server.connect(this.transport);
+      return this.transport.sseResponse;
+    }
+
+    if (request.method === 'POST' && url.pathname.endsWith('/messages')) {
+      console.log(`Handling message for sessionId: ${this.transport.sessionId}`);
+      return this.transport.handlePostMessage(request);
+    }
+
+    return new Response('Not Found', { status: 404 });
+  }
+}
 
 // Factory function to create configured MCP server instances
 function createMcpServer(name, abiInfo) {
@@ -320,9 +377,6 @@ app.get('/active-servers', async (c) => {
   });
 });
 
-// Initialize SSE transports by name
-const transports = {};
-
 // Endpoint to get or create server instance and return connection URL
 app.get("/server/:name", async (c) => {
   let name = c.req.param('name');
@@ -379,18 +433,21 @@ app.get("/server/:name", async (c) => {
   // Create or get server instance for this name
   const serverData = await storage.getServer(name);
   console.log(`===> Server data for name ${name}:`, serverData);
-  const server = createMcpServer(name, serverData?.abi || []);
-  console.log(`===> Created server instance for server: ${server}`);
+
+  // Create a new Durable Object for this server
+  const objectId = c.env.MCP_OBJECT.newUniqueId();
+  const sessionId = objectId.toString();
+
+  console.log(`===> Created Durable Object with sessionId: ${sessionId}`);
 
   return c.json({
-    url: `/sse/${name}`,
-    messageUrl: `/messages/${name}`
+    url: `/sse/${name}?sessionId=${sessionId}`,
+    messageUrl: `/messages/${name}?sessionId=${sessionId}`,
+    sessionId: sessionId
   });
 });
 
-// SSE endpoint using the already declared transports variable
-
-// SSE endpoint with name parameter
+// SSE endpoint with name parameter - using Durable Object pattern
 app.get("/sse/:name", async (c) => {
   const name = c.req.param('name');
   console.log(`===> Received SSE connection request for name: ${name}`);
@@ -402,53 +459,29 @@ app.get("/sse/:name", async (c) => {
     return c.text(`No server found for name ${name}`, 404);
   }
 
-  return streamSSE(c, async (stream) => {
-    // Create new transport instance
-    const transport = new SSETransport(`/messages/${name}`, stream);
+  // Get or create a Durable Object for this server
+  const sessionId = c.req.query('sessionId');
+  const objectId = sessionId ? c.env.MCP_OBJECT.idFromString(sessionId) : c.env.MCP_OBJECT.newUniqueId();
+  const object = c.env.MCP_OBJECT.get(objectId);
 
-    // Save transport instance, grouped by server name
-    transports[name] = transports[name] || {};
-    transports[name][transport.sessionId] = transport;
-
-    // Clean up resources when connection is aborted
-    stream.onAbort(() => {
-      if (transports[name] && transports[name][transport.sessionId]) {
-        delete transports[name][transport.sessionId];
-        console.log(`Closed SSE connection for ${name} with sessionId ${transport.sessionId}`);
-
-        if (Object.keys(transports[name]).length === 0) {
-          delete transports[name];
-          console.log(`Removed all transports for ${name}`);
-        }
-      }
-    });
-
-    // Get server data and connect
-    const serverData = await storage.getServer(name);
-    const server = createMcpServer(name, serverData?.abi || []);
-
-    console.log(`Active transport created for ${name} with sessionId ${transport.sessionId}`);
-    await server.connect(transport);
-
-    // Keep connection alive
-    while (true) {
-      await stream.sleep(1000); // Send keep-alive message every second
-    }
-  });
+  // Forward the request to the Durable Object
+  return object.fetch(new Request(`${c.req.url}/sse`));
 });
 
-// Message endpoint with name parameter
+// Message endpoint with name parameter - using Durable Object pattern
 app.post("/messages/:name", async (c) => {
-  const name = c.req.param('name');
   const sessionId = c.req.query('sessionId');
-  const transport = transports[name]?.[sessionId];
 
-  if (!transport) {
-    return c.text(`No transport found for name ${name} and sessionId ${sessionId}`, 400);
+  if (!sessionId) {
+    return c.text('Session ID is required', 400);
   }
 
-  // Use SSETransport's handlePostMessage method to process the request
-  return transport.handlePostMessage(c);
+  // Get the Durable Object for this session
+  const objectId = c.env.MCP_OBJECT.idFromString(sessionId);
+  const object = c.env.MCP_OBJECT.get(objectId);
+
+  // Forward the request to the Durable Object
+  return object.fetch(new Request(`${c.req.url}/messages`));
 });
 
 // Simple ping endpoint for API testing
@@ -503,6 +536,15 @@ app.get('/', (c) => {
   return c.redirect('/index.html');
 });
 
+// Handle favicon.ico request explicitly
+app.get('/favicon.ico', async (c) => {
+  // Use the static middleware if available, otherwise return a 404
+  if (serveStaticMiddleware) {
+    return serveStaticMiddleware({ root: './public' })(c);
+  }
+  return new Response('Not found', { status: 404 });
+});
+
 // Set environment for inviteCodeManager and storage in Cloudflare environment
 app.use('*', (c, next) => {
   if (c.env) {
@@ -512,6 +554,25 @@ app.use('*', (c, next) => {
   return next();
 });
 
+// Catch-all route for Durable Object pattern and static files
+app.all('*', async (c) => {
+  const sessionId = c.req.query('sessionId');
+
+  if (sessionId) {
+    const objectId = c.env.MCP_OBJECT.idFromString(sessionId);
+    const object = c.env.MCP_OBJECT.get(objectId);
+    return object.fetch(c.req.raw);
+  }
+
+  // If no sessionId, try to serve as a static file
+  if (serveStaticMiddleware) {
+    return serveStaticMiddleware({ root: './public' })(c);
+  }
+
+  // If we get here, return a 404
+  return new Response('Not found', { status: 404 });
+});
+
 // Initialize static middleware only once at module level
 let staticMiddlewareInitialized = false;
 
@@ -519,13 +580,19 @@ let staticMiddlewareInitialized = false;
 async function setupApp() {
   // Only initialize static middleware once
   if (!staticMiddlewareInitialized) {
-    // Get the static file middleware
-    serveStaticMiddleware = await importStaticMiddleware();
+    try {
+      // Get the static file middleware
+      serveStaticMiddleware = await importStaticMiddleware();
+      console.log('Static middleware initialized successfully');
 
-    // Now we can safely add the static file middleware
-    app.use('/*', serveStaticMiddleware({ root: './public' }));
+      // Now we can safely add the static file middleware
+      // Note: We're not using app.use here to avoid middleware conflicts
+      // Static files will be handled by the catch-all route
 
-    staticMiddlewareInitialized = true;
+      staticMiddlewareInitialized = true;
+    } catch (error) {
+      console.error('Failed to initialize static middleware:', error);
+    }
   }
 
   return app;
@@ -541,5 +608,7 @@ export default {
       initializedApp = await setupApp();
     }
     return initializedApp.fetch(request, env, ctx);
-  }
+  },
+  // Export the Durable Object class
+  McpObject
 };
