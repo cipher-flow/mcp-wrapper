@@ -2,8 +2,10 @@ import { ethers } from 'ethers';
 import { storage } from './storage.js';
 
 class EthereumService {
-  getProvider(serverName) {
-    const serverInfo = storage.getServer(serverName);
+  async getProvider(serverName) {
+    const serverInfo = await storage.getServer(serverName);
+    console.log(`Server info for ${serverName}:`, serverInfo);
+    console.log(`RPC for ${serverName}:`, serverInfo.chainRpcUrl);
     if (!serverInfo?.chainRpcUrl) {
       throw new Error(`No chain RPC URL found for server: ${serverName}`);
     }
@@ -12,7 +14,7 @@ class EthereumService {
 
   async validateConnection(serverName) {
     try {
-      const provider = this.getProvider(serverName);
+      const provider = await this.getProvider(serverName);
       await provider.getNetwork();
       return true;
     } catch (error) {
@@ -23,7 +25,7 @@ class EthereumService {
   async constructTransactionData(serverName, contractAddress, functionName, params, abi = []) {
     try {
       await this.validateConnection(serverName);
-      const provider = this.getProvider(serverName);
+      const provider = await this.getProvider(serverName);
 
       if (!ethers.isAddress(contractAddress)) {
         throw new Error("Invalid contract address");
@@ -52,7 +54,7 @@ class EthereumService {
   ) {
     try {
       await this.validateConnection(serverName);
-      const provider = this.getProvider(serverName);
+      const provider =await this.getProvider(serverName);
 
       if (!ethers.isAddress(contractAddress)) {
         throw new Error("Invalid contract address");
@@ -78,7 +80,7 @@ class EthereumService {
   async sendSignedTransaction(serverName, signedTransaction) {
     try {
       await this.validateConnection(serverName);
-      const provider = this.getProvider(serverName);
+      const provider =await this.getProvider(serverName);
 
       // Send the pre-signed transaction
       const tx = await provider.broadcastTransaction(signedTransaction);
