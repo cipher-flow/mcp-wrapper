@@ -14,29 +14,110 @@ import { log } from "./logger.js";
 // Create Hono app instance - this should only happen once at the module level
 const app = new Hono();
 
-// Apply the request ID middleware to all routes
-app.use('*', addRequestId);
-
-// In Cloudflare environment, import cloudflare-workers static file service
-let serveStaticMiddleware = null;
-
-// Import static file service middleware
-const importStaticMiddleware = async () => {
-  try {
-    const { serveStatic } = await import('hono/cloudflare-workers');
-    return serveStatic;
-  } catch (error) {
-    log.error('Failed to import serveStatic middleware', { error: error.message, stack: error.stack });
-    // Fallback function that returns a 404 response
-    return () => (c) => c.text('Static file service not available', 404);
-  }
-};
-
 // Add request ID middleware for Hono
 const addRequestId = async (c, next) => {
   // Generate a unique request ID and add it to the context
   c.set('requestId', uuidv4());
   await next();
+};
+
+// Apply the request ID middleware to all routes
+app.use('*', addRequestId);
+
+// Static file service middleware
+let serveStaticMiddleware = null;
+
+// Initialize static file service middleware
+const initStaticMiddleware = async () => {
+  if (serveStaticMiddleware) return serveStaticMiddleware;
+
+  try {
+    const { serveStatic } = await import('hono/cloudflare-workers');
+    serveStaticMiddleware = serveStatic;
+    log.info('Static middleware initialized successfully');
+  } catch (error) {
+    log.error('Failed to import serveStatic middleware', { error: error.message, stack: error.stack });
+    // Fallback function that returns a 404 response
+    serveStaticMiddleware = () => (c) => c.text('Static file service not available', 404);
+  }
+
+  return serveStaticMiddleware;
+};
+
+// Environment setup helper function
+const setupEnvironment = (env) => {
+  if (!env) return false;
+
+  // Initialize logger with environment
+  log.init(env);
+
+  // Set environment for managers
+  inviteCodeManager.setEnv(env);
+  storage.setEnv(env);
+
+  return true;
+};
+
+// Invite code validation middleware
+const validateInviteCode = async (c, next) => {
+  const inviteCode = c.req.query('inviteCode') || c.req.param('name')?.split('-').slice(-1)[0];
+  const context = { requestId: c.get('requestId'), inviteCode };
+
+  if (!inviteCode) {
+    log.warn('Missing invite code', context);
+    return c.json({ error: 'Invite code is required' }, 400);
+  }
+
+  if (!await inviteCodeManager.validateCode(inviteCode)) {
+    log.warn('Invalid invite code', context);
+    return c.json({ error: 'Invalid invite code' }, 403);
+  }
+
+  // Check access limit
+  if (!await inviteCodeManager.canAccessServer(inviteCode)) {
+    log.warn('Invite code reached maximum access limit', context);
+    return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
+  }
+
+  // 将验证通过的邀请码添加到上下文中
+  c.set('validatedInviteCode', inviteCode);
+  return next();
+};
+
+// Tool function wrapper for invite code validation
+const withInviteCodeValidation = (name, toolFunction) => {
+  return async (args) => {
+    const inviteCode = name.split('-').slice(-1)[0];
+    const context = { serverName: name, inviteCode, functionName: args.functionName };
+
+    // Validate invite code
+    if (!await inviteCodeManager.validateCode(inviteCode)) {
+      log.warn('Invalid invite code in tool call', context);
+      return {
+        content: [{
+          type: "text",
+          text: "Invalid invite code"
+        }]
+      };
+    }
+
+    // Check access limit
+    if (!await inviteCodeManager.canAccessServer(inviteCode)) {
+      log.warn('Invite code reached maximum access limit', context);
+      return {
+        content: [{
+          type: "text",
+          text: "Invite code has reached maximum access limit"
+        }]
+      };
+    }
+
+    // Increment access count for tool usage
+    await inviteCodeManager.incrementAccess(inviteCode);
+
+    // Execute the actual tool function
+    return toolFunction(args, context);
+  };
 };
 
 
@@ -52,13 +133,8 @@ export class McpObject extends DurableObject {
     this.server = null; // Will be initialized in fetch
 
     // Set environment for managers in Durable Object
-    if (env) {
-      // Initialize logger with environment
-      log.init(env);
-
-      log.info('Setting environment in McpObject constructor');
-      inviteCodeManager.setEnv(env);
-      storage.setEnv(env);
+    if (setupEnvironment(env)) {
+      log.info('Environment set up in McpObject constructor');
     }
   }
 
@@ -70,9 +146,9 @@ export class McpObject extends DurableObject {
 
     // Ensure environment is set for every request in the Durable Object
     if (this.state.id && this.state.id.env) {
-      log.info('Setting environment in McpObject fetch', context);
-      inviteCodeManager.setEnv(this.state.id.env);
-      storage.setEnv(this.state.id.env);
+      if (setupEnvironment(this.state.id.env)) {
+        log.info('Environment set up in McpObject fetch', context);
+      }
     }
 
     // Extract name from the URL path
@@ -161,34 +237,8 @@ function createMcpServer(name, abiInfo) {
           contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid contract address'),
           functionName: z.string().min(1, 'Function name is required')
         },
-        async (args) => {
+        withInviteCodeValidation(name, async (args, context) => {
           try {
-            // get invite code from name(name-inviteCode)
-            const inviteCode = name.split('-').slice(-1)[0];
-            const context = { serverName: name, inviteCode, functionName: args.functionName };
-
-            // Validate invite code
-            if (!(await inviteCodeManager.validateCode(inviteCode))) {
-              log.warn('Invalid invite code in tool call', context);
-              return {
-                content: [{
-                  type: "text",
-                  text: "Invalid invite code"
-                }]
-              };
-            }
-            // Check access limit
-            if (!(await inviteCodeManager.canAccessServer(inviteCode))) {
-              log.warn('Invite code reached maximum access limit', context);
-              return {
-                content: [{
-                  type: "text",
-                  text: "Invite code has reached maximum access limit"
-                }]
-              };
-            }
-            // Increment access count for tool usage
-            await inviteCodeManager.incrementAccess(inviteCode);
 
             log.info('Calling contract function', {
               ...context,
@@ -230,7 +280,7 @@ function createMcpServer(name, abiInfo) {
               }]
             };
           }
-        }
+        })
       );
     }
   });
@@ -243,26 +293,8 @@ function createMcpServer(name, abiInfo) {
       functionName: z.string().min(1, 'Function name is required'),
       params: z.array(z.string())
     },
-    async (args) => {
+    withInviteCodeValidation(name, async (args) => {
       try {
-        const inviteCode = name.split('-').slice(-1)[0];
-        if (!await inviteCodeManager.validateCode(inviteCode)) {
-          return {
-            content: [{
-              type: "text",
-              text: "Invalid invite code"
-            }]
-          };
-        }
-        if (!await inviteCodeManager.canAccessServer(inviteCode)) {
-          return {
-            content: [{
-              type: "text",
-              text: "Invite code has reached maximum access limit"
-            }]
-          };
-        }
-        await inviteCodeManager.incrementAccess(inviteCode);
 
         const txData = await ethereumService.constructTransactionData(
           name,
@@ -285,7 +317,7 @@ function createMcpServer(name, abiInfo) {
           }]
         };
       }
-    }
+    })
   );
 
   // Add tool for sending signed transactions
@@ -294,26 +326,8 @@ function createMcpServer(name, abiInfo) {
     {
       signedTransaction: z.string().min(1, 'Signed transaction is required')
     },
-    async (args) => {
+    withInviteCodeValidation(name, async (args) => {
       try {
-        const inviteCode = name.split('-').slice(-1)[0];
-        if (!await inviteCodeManager.validateCode(inviteCode)) {
-          return {
-            content: [{
-              type: "text",
-              text: "Invalid invite code"
-            }]
-          };
-        }
-        if (!await inviteCodeManager.canAccessServer(inviteCode)) {
-          return {
-            content: [{
-              type: "text",
-              text: "Invite code has reached maximum access limit"
-            }]
-          };
-        }
-        await inviteCodeManager.incrementAccess(inviteCode);
 
         const receipt = await ethereumService.sendSignedTransaction(
           name,
@@ -333,7 +347,7 @@ function createMcpServer(name, abiInfo) {
           }]
         };
       }
-    }
+    })
   );
 
   // Resource for full ABI
@@ -397,19 +411,9 @@ function createMcpServer(name, abiInfo) {
 }
 
 // Endpoint to get active servers
-app.get('/active-servers', async (c) => {
-  const inviteCode = c.req.query('inviteCode');
+app.get('/active-servers', validateInviteCode, async (c) => {
+  const inviteCode = c.get('validatedInviteCode');
   const context = { requestId: c.get('requestId'), inviteCode };
-
-  if (!inviteCode) {
-    log.warn('Missing invite code in active-servers request', context);
-    return c.json({ error: "Invite code is required" }, 400);
-  }
-
-  if (!await inviteCodeManager.validateCode(inviteCode)) {
-    log.warn('Invalid invite code in active-servers request', context);
-    return c.json({ error: "Invalid invite code" }, 403);
-  }
 
   // Get servers directly from invite code info
   const codeInfo = await inviteCodeManager.getCodeInfo(inviteCode);
@@ -438,10 +442,10 @@ app.get('/active-servers', async (c) => {
 });
 
 // Endpoint to get or create server instance and return connection URL
-app.get("/server/:name", async (c) => {
+app.get("/server/:name", validateInviteCode, async (c) => {
   let name = c.req.param('name');
   const abi = c.req.query('abi');
-  const inviteCode = c.req.query('inviteCode');
+  const inviteCode = c.get('validatedInviteCode');
   const chainRpcUrl = c.req.query('chainRpcUrl');
   const context = { requestId: c.get('requestId'), inviteCode, serverName: name };
 
@@ -457,17 +461,6 @@ app.get("/server/:name", async (c) => {
     return c.json({ error: 'Server name is required' }, 400);
   }
 
-  if (!inviteCode) {
-    log.warn('Missing invite code', context);
-    return c.json({ error: 'Invite code is required' }, 400);
-  }
-
-  // Validate invite code
-  if (!await inviteCodeManager.validateCode(inviteCode)) {
-    log.warn('Invalid invite code', context);
-    return c.json({ error: 'Invalid invite code' }, 403);
-  }
-
   // Check if server exists and if new server can be created
   const serverExists = await inviteCodeManager.isServerExist(inviteCode, name);
   log.info('Server existence check', { ...context, exists: serverExists });
@@ -475,12 +468,6 @@ app.get("/server/:name", async (c) => {
   if (!serverExists && !await inviteCodeManager.canCreateServer(inviteCode)) {
     log.warn('Invite code reached maximum server limit', context);
     return c.json({ error: 'Invite code has reached maximum server limit' }, 403);
-  }
-
-  // Check access limit
-  if (!await inviteCodeManager.canAccessServer(inviteCode)) {
-    log.warn('Invite code reached maximum access limit', context);
-    return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
   // Create new server instance if it doesn't exist
@@ -661,18 +648,15 @@ app.get('/', (c) => {
 
 // Handle favicon.ico request explicitly
 app.get('/favicon.ico', async (c) => {
-  // Use the static middleware if available, otherwise return a 404
-  if (serveStaticMiddleware) {
-    return serveStaticMiddleware({ root: './public' })(c);
-  }
-  return new Response('Not found', { status: 404 });
+  // Initialize static middleware if needed
+  const staticMiddleware = await initStaticMiddleware();
+  return staticMiddleware({ root: './public' })(c);
 });
 
 // Set environment for inviteCodeManager and storage in Cloudflare environment
 app.use('*', (c, next) => {
-  if (c.env) {
-    inviteCodeManager.setEnv(c.env);
-    storage.setEnv(c.env);
+  if (setupEnvironment(c.env)) {
+    log.debug('Environment set up in middleware');
   }
   return next();
 });
@@ -688,36 +672,14 @@ app.all('*', async (c) => {
   }
 
   // If no sessionId, try to serve as a static file
-  if (serveStaticMiddleware) {
-    return serveStaticMiddleware({ root: './public' })(c);
-  }
-
-  // If we get here, return a 404
-  return new Response('Not found', { status: 404 });
+  const staticMiddleware = await initStaticMiddleware();
+  return staticMiddleware({ root: './public' })(c);
 });
 
-// Initialize static middleware only once at module level
-let staticMiddlewareInitialized = false;
-
-// Setup function to initialize the application - does not register routes
+// Setup function to initialize the application
 async function setupApp() {
-  // Only initialize static middleware once
-  if (!staticMiddlewareInitialized) {
-    try {
-      // Get the static file middleware
-      serveStaticMiddleware = await importStaticMiddleware();
-      log.info('Static middleware initialized successfully');
-
-      // Now we can safely add the static file middleware
-      // Note: We're not using app.use here to avoid middleware conflicts
-      // Static files will be handled by the catch-all route
-
-      staticMiddlewareInitialized = true;
-    } catch (error) {
-      log.error('Failed to initialize static middleware', { error: error.message, stack: error.stack });
-    }
-  }
-
+  // Initialize static middleware
+  await initStaticMiddleware();
   return app;
 }
 
@@ -727,13 +689,8 @@ let initializedApp = null;
 export default {
   fetch: async (request, env, ctx) => {
     // Set environment for managers at the top level of every request
-    if (env) {
-      // Initialize logger with environment
-      log.init(env);
-
-      log.info('Setting environment in main fetch handler');
-      inviteCodeManager.setEnv(env);
-      storage.setEnv(env);
+    if (setupEnvironment(env)) {
+      log.info('Environment set up in main fetch handler');
     }
 
     // Only set up the app once
