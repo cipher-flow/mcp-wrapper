@@ -76,7 +76,14 @@
             </div>
             <input type="text" id="serverNameInput" placeholder="Enter server name..." required>
             <input type="text" id="chainRpcUrlInput" placeholder="Enter Chain RPC URL..." required>
-            <textarea id="abiInput" placeholder="Enter ABI (Array or JSON format)..."></textarea>
+            <div style="display: flex; gap: 10px; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <input type="text" id="contractAddressInput" placeholder="Enter contract address to fetch ABI from Etherscan..." style="width: 100%;">
+                    <small style="color: #6c757d;">Or paste ABI manually below</small>
+                </div>
+                <button type="button" id="fetchAbiBtn" style="white-space: nowrap;">Fetch ABI</button>
+            </div>
+            <textarea id="abiInput" placeholder="Enter ABI (Array or JSON format)..." required></textarea>
             <button type="submit">Create Server</button>
         </form>
         <div id="serverList">
@@ -156,6 +163,31 @@
         const serverForm = document.getElementById('serverForm');
         const serverNameInput = document.getElementById('serverNameInput');
         const abiInput = document.getElementById('abiInput');
+        const contractAddressInput = document.getElementById('contractAddressInput');
+        const fetchAbiBtn = document.getElementById('fetchAbiBtn');
+
+        fetchAbiBtn.addEventListener('click', async () => {
+            const contractAddress = contractAddressInput.value.trim();
+            if (!contractAddress) {
+                alert('Please enter a contract address');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/fetch-abi?address=${encodeURIComponent(contractAddress)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                abiInput.value = JSON.stringify(data.abi, null, 2);
+            } catch (error) {
+                alert(`Failed to fetch ABI: ${error.message}`);
+            }
+        });
 
         serverForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -165,8 +197,32 @@
             const chainRpcUrl = document.getElementById('chainRpcUrlInput').value.trim();
 
             try {
-                const response = await fetch(`/server/${serverName}?abi=${encodeURIComponent(abi)}&inviteCode=${encodeURIComponent(inviteCode)}&chainRpcUrl=${encodeURIComponent(chainRpcUrl)}`);
-                const data = await response.json();
+                console.log('Sending ABI data:', {
+                    serverName,
+                    abiLength: abi.length,
+                    chainRpcUrl
+                });
+                const response = await fetch(`/server/${serverName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        abi,
+                        inviteCode,
+                        chainRpcUrl
+                    })
+                });
+                const responseText = await response.text();
+                console.log('Server response text:', responseText);
+
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Failed to parse server response:', parseError);
+                    throw new Error(`Server returned invalid JSON: ${responseText}`);
+                }
 
                 if (data.error) {
                     alert(data.error);
@@ -190,7 +246,12 @@
                     removeServer(serverName);
                 };
             } catch (error) {
-                alert('Failed to create server');
+                let errorMessage = 'Failed to create server';
+                if (error.message) {
+                    errorMessage = `${errorMessage}: ${error.message}`;
+                }
+                alert(errorMessage);
+                console.error('Server creation error:', error);
             }
         });
 

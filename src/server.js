@@ -452,6 +452,39 @@ app.post("/messages/:name", async (req, res) => {
   }
 });
 
+// Add Etherscan ABI fetching endpoint
+app.get('/api/fetch-abi', async (req, res) => {
+  const { address } = req.query;
+  if (!address) {
+    return res.status(400).json({ error: 'Contract address is required' });
+  }
+
+  const etherscanApiKey = process.env.ETHERSCAN_API_KEY;
+  if (!etherscanApiKey) {
+    return res.status(500).json({ error: 'Etherscan API key not configured' });
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
+    );
+    const data = await response.json();
+
+    if (data.status === '0') {
+      return res.status(400).json({ error: data.result });
+    }
+
+    try {
+      const abi = JSON.parse(data.result);
+      res.json({ abi });
+    } catch (e) {
+      res.status(400).json({ error: 'Invalid ABI format received from Etherscan' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch ABI from Etherscan' });
+  }
+});
+
 // Serve static files
 app.use(express.static("public"));
 
