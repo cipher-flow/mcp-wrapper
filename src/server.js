@@ -20,7 +20,15 @@ const app = express();
 
 // Apply middleware
 app.use(addRequestId);
-app.use(express.json());
+app.use(express.json({limit: '50mb'}));
+app.use(express.urlencoded({limit: '50mb', extended: true}));
+
+// Configure larger header size limits
+app.use((req, res, next) => {
+  res.setHeader('Connection', 'Keep-Alive');
+  res.setHeader('Keep-Alive', 'timeout=600');
+  next();
+});
 
 
 // Factory function to create configured MCP server instances
@@ -336,9 +344,9 @@ app.get('/active-servers', (req, res) => {
 const transports = {};
 
 // Endpoint to get or create server instance and return connection URL
-app.get("/server/:name", async (req, res) => {
+app.post("/server/:name", express.json({limit: '50mb'}), async (req, res) => {
   let { name } = req.params;
-  const { abi, inviteCode, chainRpcUrl } = req.query;
+  const { abi, inviteCode, chainRpcUrl } = req.body;
   // concat name with name-inviteCode
   name = `${name}-${inviteCode}`;
   if (!name) {
