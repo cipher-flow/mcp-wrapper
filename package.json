@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "wrangler:dev": "wrangler dev",
+    "wrangler:remote": "wrangler dev --remote",
     "wrangler:deploy": "wrangler deploy --minify",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",

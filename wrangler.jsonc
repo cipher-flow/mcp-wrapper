@@ -22,7 +22,7 @@
     },
     "kv_namespaces": [
         {
-            "binding": "KV_INVITE_CODES",
+            "binding": "INVITE_CODES",
             "id": "cfbcd60e21d342c7ae9d05d1604d51ae"
         },
         {

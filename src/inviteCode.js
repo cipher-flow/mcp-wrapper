@@ -1,11 +1,11 @@
 import { config } from './config.js';
 
 // KV namespace will be bound to the environment at runtime
-// KV_INVITE_CODES should be defined in wrangler.toml
+// INVITE_CODES should be defined in wrangler.toml
 
 class InviteCodeManager {
   constructor() {
-    // The KV namespace will be available as env.KV_INVITE_CODES in the worker context
+    // The KV namespace will be available as env.INVITE_CODES in the worker context
     this.env = null;
   }
 
@@ -23,11 +23,11 @@ class InviteCodeManager {
 
       // Get all keys from KV namespace
       const codes = {};
-      const listResult = await this.env.KV_INVITE_CODES.list();
+      const listResult = await this.env.INVITE_CODES.list();
 
       // Fetch each value
       const promises = listResult.keys.map(async (key) => {
-        const value = await this.env.KV_INVITE_CODES.get(key.name, { type: 'json' });
+        const value = await this.env.INVITE_CODES.get(key.name, { type: 'json' });
         codes[key.name] = value;
       });
 
@@ -47,7 +47,7 @@ class InviteCodeManager {
 
       // Put each code in KV separately
       const promises = Object.entries(codes).map(([key, value]) => {
-        return this.env.KV_INVITE_CODES.put(key, JSON.stringify(value));
+        return this.env.INVITE_CODES.put(key, JSON.stringify(value));
       });
 
       await Promise.all(promises);
@@ -66,7 +66,7 @@ class InviteCodeManager {
 
       // Check if the code exists directly
       console.log(`Attempting to get code ${code} from KV`);
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       console.log(`Code ${code} exists: ${value !== null}`);
       return value !== null;
     } catch (error) {
@@ -81,7 +81,7 @@ class InviteCodeManager {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       return value ? value.servers : [];
     } catch (error) {
       console.error('Error getting servers for code:', error);
@@ -95,7 +95,7 @@ class InviteCodeManager {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       if (!value) return false;
       return value.servers.length < config.inviteCode.maxServers;
     } catch (error) {
@@ -110,7 +110,7 @@ class InviteCodeManager {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       if (!value) return false;
       return value.accessCount < config.inviteCode.maxAccesses;
     } catch (error) {
@@ -127,12 +127,12 @@ class InviteCodeManager {
 
       if (!(await this.canCreateServer(code))) return false;
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       if (!value) return false;
 
       if (!value.servers.includes(serverName)) {
         value.servers.push(serverName);
-        await this.env.KV_INVITE_CODES.put(code, JSON.stringify(value));
+        await this.env.INVITE_CODES.put(code, JSON.stringify(value));
         return true;
       }
       return false;
@@ -150,11 +150,11 @@ class InviteCodeManager {
 
       if (!(await this.canAccessServer(code))) return false;
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       if (!value) return false;
 
       value.accessCount++;
-      await this.env.KV_INVITE_CODES.put(code, JSON.stringify(value));
+      await this.env.INVITE_CODES.put(code, JSON.stringify(value));
       return true;
     } catch (error) {
       console.error('Error incrementing access:', error);
@@ -168,7 +168,7 @@ class InviteCodeManager {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      return await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      return await this.env.INVITE_CODES.get(code, { type: 'json' });
     } catch (error) {
       console.error('Error getting code info:', error);
       return null;
@@ -181,7 +181,7 @@ class InviteCodeManager {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      const value = await this.env.KV_INVITE_CODES.get(code, { type: 'json' });
+      const value = await this.env.INVITE_CODES.get(code, { type: 'json' });
       console.log('Value:', value);
       if (!value) return false;
       return value.servers.includes(serverName);
