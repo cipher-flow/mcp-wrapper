@@ -23,11 +23,13 @@
     "kv_namespaces": [
         {
             "binding": "INVITE_CODES",
-            "id": "cfbcd60e21d342c7ae9d05d1604d51ae"
+            "id": "cfbcd60e21d342c7ae9d05d1604d51ae",
+            "preview_id": "f02712407a7b4fa29bbf8f738e1d4e13"
         },
         {
             "binding": "KV_SERVERS",
-            "id": "54014618638a4b48b97e46d87ae63753"
+            "id": "54014618638a4b48b97e46d87ae63753",
+            "preview_id": "c7947fc0798b49c6843cdc535f461dc5"
         }
     ],
     "durable_objects": {
