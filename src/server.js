@@ -560,6 +560,8 @@ app.get('/api/ping', (c) => {
 // Add Etherscan ABI fetching endpoint
 app.get('/api/fetch-abi', async (c) => {
   const address = c.req.query('address');
+  const network = c.req.query('network') || 'mainnet';
+
   const context = { requestId: c.get('requestId') };
 
   if (!address) {
@@ -576,7 +578,7 @@ app.get('/api/fetch-abi', async (c) => {
   try {
     log.info('Fetching ABI from Etherscan', { ...context, address });
     const response = await fetch(
-      `https://api.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
+      `https://api${network === 'mainnet' ? '' : '-' + network}.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
     );
     const data = await response.json();
 
