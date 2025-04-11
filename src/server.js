@@ -20,15 +20,6 @@ const app = express();
 
 // Apply middleware
 app.use(addRequestId);
-app.use(express.json({limit: '50mb'}));
-app.use(express.urlencoded({limit: '50mb', extended: true}));
-
-// Configure larger header size limits
-app.use((req, res, next) => {
-  res.setHeader('Connection', 'Keep-Alive');
-  res.setHeader('Keep-Alive', 'timeout=600');
-  next();
-});
 
 
 // Factory function to create configured MCP server instances
