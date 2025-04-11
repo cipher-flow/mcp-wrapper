@@ -181,7 +181,8 @@
                 const network = document.getElementById('networkSelect').value;
                 const response = await fetch(`/api/fetch-abi?address=${encodeURIComponent(contractAddress)}&network=${network}`);
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! Status: ${response.status}\nResponse: ${errorText}`);
                 }
                 const data = await response.json();
                 if (data.error) {
@@ -190,7 +191,7 @@
                 }
                 abiInput.value = JSON.stringify(data.abi, null, 2);
             } catch (error) {
-                alert(`Failed to fetch ABI: ${error.message}`);
+                alert(`Failed to fetch ABI:\n${error.message}`);
             }
         });
 
