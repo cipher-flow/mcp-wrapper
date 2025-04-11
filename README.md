@@ -52,9 +52,19 @@ npm run dev
 
 ### Production
 
-For production deployment:
+For production deployment to Cloudflare Workers:
 ```bash
-npm run build
+# Set up your environment variables in .env file
+npm run deploy
+```
+
+This will:
+1. Read KV namespace IDs from environment variables
+2. Update wrangler.jsonc with these values
+3. Deploy the application to Cloudflare Workers
+
+For local production testing:
+```bash
 npm start
 ```
 
@@ -73,6 +83,7 @@ npm start
 - `generateInviteCodes.js`: Generate new invite codes
 - `generateSignedTx.js`: Create signed transactions
 - `sendSignedTx.js`: Broadcast signed transactions
+- `deploy.js`: Deploy script that updates wrangler.jsonc with KV namespace IDs from environment variables
 
 ## Configuration
 
