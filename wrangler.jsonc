@@ -24,12 +24,12 @@
         {
             "binding": "INVITE_CODES",
             "id": "$INVITE_CODES_KV_ID",
-            "preview_id": "$INVITE_CODES_PREVIEW_KV_ID"
+            "preview_id": "292c056ce984424ca246ef79f04dde55"
         },
         {
             "binding": "SERVERS",
             "id": "$SERVERS_KV_ID",
-            "preview_id": "$SERVERS_PREVIEW_KV_ID"
+            "preview_id": "bef7e2da36304d9e92be0bbb5d2e6100"
         }
     ],
     "durable_objects": {
