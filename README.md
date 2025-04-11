@@ -61,7 +61,8 @@ npm run deploy
 This will:
 1. Read KV namespace IDs from environment variables
 2. Update wrangler.jsonc with these values
-3. Deploy the application to Cloudflare Workers
+3. Update .dev.vars file with all environment variables for local development
+4. Deploy the application to Cloudflare Workers
 
 For local production testing:
 ```bash
