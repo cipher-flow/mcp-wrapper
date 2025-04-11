@@ -453,7 +453,7 @@ app.post("/messages/:name", async (req, res) => {
 
 // Add Etherscan ABI fetching endpoint
 app.get('/api/fetch-abi', async (req, res) => {
-  const { address } = req.query;
+  const { address, network = 'mainnet' } = req.query;
   if (!address) {
     return res.status(400).json({ error: 'Contract address is required' });
   }
@@ -465,7 +465,7 @@ app.get('/api/fetch-abi', async (req, res) => {
 
   try {
     const response = await fetch(
-      `https://api.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
+      `https://api${network === 'mainnet' ? '' : '-' + network}.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
     );
     const data = await response.json();
 
