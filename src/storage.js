@@ -1,10 +1,10 @@
 // Cloudflare KV storage implementation for servers
 // KV namespace will be bound to the environment at runtime
-// KV_SERVERS should be defined in wrangler.toml
+// SERVERS should be defined in wrangler.toml
 
 class Storage {
   constructor() {
-    // The KV namespace will be available as env.KV_SERVERS in the worker context
+    // The KV namespace will be available as env.SERVERS in the worker context
     this.env = null;
   }
 
@@ -26,7 +26,7 @@ class Storage {
         abi: serverInfo.abi
       };
 
-      await this.env.KV_SERVERS.put(name, JSON.stringify(serverData));
+      await this.env.SERVERS.put(name, JSON.stringify(serverData));
       console.log(`Server ${name} saved to KV storage`);
       return serverData;
     } catch (error) {
@@ -41,7 +41,7 @@ class Storage {
         throw new Error('Environment not set - call setEnv before using KV operations');
       }
 
-      return await this.env.KV_SERVERS.get(name, { type: 'json' });
+      return await this.env.SERVERS.get(name, { type: 'json' });
     } catch (error) {
       console.error(`Error getting server ${name} from KV:`, error);
       return null;
@@ -55,10 +55,10 @@ class Storage {
       }
 
       const servers = {};
-      const listResult = await this.env.KV_SERVERS.list();
+      const listResult = await this.env.SERVERS.list();
 
       const promises = listResult.keys.map(async (key) => {
-        const value = await this.env.KV_SERVERS.get(key.name, { type: 'json' });
+        const value = await this.env.SERVERS.get(key.name, { type: 'json' });
         servers[key.name] = value;
       });
 
