@@ -60,7 +60,21 @@ const setupEnvironment = (env) => {
 
 // Invite code validation middleware
 const validateInviteCode = async (c, next) => {
-  const inviteCode = c.req.query('inviteCode') || c.req.param('name')?.split('-').slice(-1)[0];
+  let inviteCode;
+
+  // Try to get inviteCode from query params, URL params, or request body
+  inviteCode = c.req.query('inviteCode') || c.req.param('name')?.split('-').slice(-1)[0];
+
+  // For POST requests, also check the request body
+  if (c.req.method === 'POST') {
+    try {
+      const body = await c.req.json();
+      inviteCode = body.inviteCode;
+    } catch (error) {
+      return c.json({ error: 'Invalid request body' }, 400);
+    }
+  }
+
   const context = { requestId: c.get('requestId'), inviteCode };
 
   if (!inviteCode) {
@@ -79,7 +93,6 @@ const validateInviteCode = async (c, next) => {
     return c.json({ error: 'Invite code has reached maximum access limit' }, 403);
   }
 
-  // 将验证通过的邀请码添加到上下文中
   c.set('validatedInviteCode', inviteCode);
   return next();
 };
@@ -442,12 +455,17 @@ app.get('/active-servers', validateInviteCode, async (c) => {
 });
 
 // Endpoint to get or create server instance and return connection URL
-app.get("/server/:name", validateInviteCode, async (c) => {
+app.post("/server/:name", validateInviteCode, async (c) => {
   let name = c.req.param('name');
-  const abi = c.req.query('abi');
+  const context = { requestId: c.get('requestId'), serverName: name };
   const inviteCode = c.get('validatedInviteCode');
-  const chainRpcUrl = c.req.query('chainRpcUrl');
-  const context = { requestId: c.get('requestId'), inviteCode, serverName: name };
+  let body = await c.req.json();
+
+  log.info("Received request for server", body);
+
+  // Extract parameters from body
+  const abi = body.abi;
+  const chainRpcUrl = body.chainRpcUrl;
 
   log.info('Received request for server', context);
 
@@ -494,15 +512,9 @@ app.get("/server/:name", validateInviteCode, async (c) => {
   const serverData = await storage.getServer(name);
   log.info('Retrieved server data', { ...context, hasData: !!serverData });
 
-  // Create a new Durable Object for this server
-  const objectId = c.env.MCP_OBJECT.newUniqueId();
-  const sessionId = objectId.toString();
-  log.info('Created Durable Object', { ...context, sessionId });
-
   return c.json({
-    url: `/sse/${name}?sessionId=${sessionId}`,
-    messageUrl: `/messages/${name}?sessionId=${sessionId}`,
-    sessionId: sessionId
+    url: `/sse/${name}`,
+    messageUrl: `/messages/${name}`,
   });
 });
 

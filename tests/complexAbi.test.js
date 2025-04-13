@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { abiParser } from '../src/abiParser.js';
 
 describe('ABIParser - Complex ABI', () => {
