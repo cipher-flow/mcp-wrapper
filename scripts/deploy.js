@@ -15,10 +15,6 @@ const devVarsPath = path.join(rootDir, '.dev.vars');
 const requiredEnvVars = [
   'INVITE_CODES_KV_ID',
   'SERVERS_KV_ID',
-  'ETHERSCAN_API_KEY',
-  'INVITE_CODE_LENGTH',
-  'INVITE_CODE_MAX_SERVERS',
-  'INVITE_CODE_MAX_ACCESSES',
 ];
 
 // Additional environment variables to include in .dev.vars
@@ -26,6 +22,10 @@ const additionalEnvVars = [
   'INFURA_PROJECT_ID',
   'SERVERS_PREVIEW_KV_ID',
   'INVITE_CODES_PREVIEW_KV_ID',
+  'ETHERSCAN_API_KEY',
+  'INVITE_CODE_LENGTH',
+  'INVITE_CODE_MAX_SERVERS',
+  'INVITE_CODE_MAX_ACCESSES',
 ];
 
 // Check if all required environment variables are set
