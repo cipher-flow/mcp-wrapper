@@ -17,15 +17,13 @@ const requiredEnvVars = [
   'SERVERS_KV_ID',
 ];
 
-// Additional environment variables to include in .dev.vars
-const additionalEnvVars = [
-  'INFURA_PROJECT_ID',
-  'SERVERS_PREVIEW_KV_ID',
-  'INVITE_CODES_PREVIEW_KV_ID',
-  'ETHERSCAN_API_KEY',
+// Environment variables to include in wrangler.jsonc vars section
+const wranglerVarsEnvVars = [
   'INVITE_CODE_LENGTH',
   'INVITE_CODE_MAX_SERVERS',
   'INVITE_CODE_MAX_ACCESSES',
+  'INFURA_PROJECT_ID',
+  'ETHERSCAN_API_KEY',
 ];
 
 // Check if all required environment variables are set
@@ -37,49 +35,9 @@ if (missingVars.length > 0) {
 }
 
 /**
- * Updates the .dev.vars file with all environment variables
+ * Updates the wrangler.jsonc file with KV namespace IDs and environment variables
  */
-function updateDevVars() {
-  try {
-    console.log('📝 Updating .dev.vars file with environment variables...');
-
-    // Create content for .dev.vars file
-    let devVarsContent = '';
-
-    // Add Invite Code Configuration section
-    devVarsContent += '# Invite Code Configuration\n';
-    // Use additionalEnvVars array to dynamically include variables if they exist
-    additionalEnvVars.forEach(varName => {
-      if (process.env[varName]) {
-        devVarsContent += `${varName}=${process.env[varName]}\n`;
-      }
-    });
-
-    // Etherscan API key is already included in additionalEnvVars, so we don't need to add it separately
-
-    // Add Cloudflare section
-    devVarsContent += '\n# Cloudflare\n';
-    // Include all required KV namespace IDs
-    requiredEnvVars.forEach(varName => {
-      if (process.env[varName]) {
-        devVarsContent += `${varName}=${process.env[varName]}\n`;
-      }
-    });
-
-    // Write to .dev.vars file
-    fs.writeFileSync(devVarsPath, devVarsContent, 'utf8');
-    console.log('✅ Successfully updated .dev.vars with environment variables.');
-    return true;
-  } catch (error) {
-    console.error(`❌ Error updating .dev.vars: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Updates the wrangler.jsonc file with KV namespace IDs
- */
-function updateWranglerConfig() {
+function updateWranglerEnv() {
   try {
     console.log('📝 Reading wrangler.jsonc file...');
     let wranglerContent = fs.readFileSync(wranglerPath, 'utf8');
@@ -89,9 +47,60 @@ function updateWranglerConfig() {
     wranglerContent = wranglerContent.replace(/"\$INVITE_CODES_KV_ID"/g, `"${process.env.INVITE_CODES_KV_ID}"`);
     wranglerContent = wranglerContent.replace(/"\$SERVERS_KV_ID"/g, `"${process.env.SERVERS_KV_ID}"`);
 
+    // Update the vars section with environment variables
+    console.log('🔄 Updating vars section with environment variables...');
+    try {
+      // Parse the wrangler.jsonc content
+      // Remove comments before parsing
+      const jsonContent = wranglerContent.replace(/\/\/.*$/gm, '').replace(/#.*$/gm, '');
+      const wranglerJson = JSON.parse(jsonContent);
+
+      // Ensure vars section exists
+      if (!wranglerJson.vars) {
+        wranglerJson.vars = {};
+      }
+
+      // Add environment variables to vars section
+      wranglerVarsEnvVars.forEach(varName => {
+        if (process.env[varName]) {
+          // Try to parse as number if it looks like one
+          const value = !isNaN(process.env[varName]) && process.env[varName].trim() !== ''
+            ? Number(process.env[varName])
+            : process.env[varName];
+          wranglerJson.vars[varName] = value;
+          console.log(`Added ${varName}=${value} to wrangler.jsonc vars`);
+        }
+      });
+
+      // Convert back to string with proper formatting
+      wranglerContent = JSON.stringify(wranglerJson, null, 4);
+    } catch (jsonError) {
+      console.warn(`⚠️ Could not parse wrangler.jsonc as JSON: ${jsonError.message}`);
+      console.warn('Falling back to regex-based replacement for vars section...');
+
+      // Fallback: Use regex to update the vars section
+      const varsRegex = /("vars"\s*:\s*\{[^\}]*)(\})/s;
+      if (varsRegex.test(wranglerContent)) {
+        wranglerContent = wranglerContent.replace(varsRegex, (_, prefix, suffix) => {
+          let newVars = prefix;
+          wranglerVarsEnvVars.forEach(varName => {
+            if (process.env[varName]) {
+              const value = !isNaN(process.env[varName]) && process.env[varName].trim() !== ''
+                ? process.env[varName]
+                : `"${process.env[varName]}"`;
+              newVars += `\n        "${varName}": ${value},`;
+            }
+          });
+          return newVars + suffix;
+        });
+      } else {
+        console.warn('⚠️ Could not find vars section in wrangler.jsonc');
+      }
+    }
+
     // Write the updated content back to the wrangler.jsonc file
     fs.writeFileSync(wranglerPath, wranglerContent, 'utf8');
-    console.log('✅ Successfully updated wrangler.jsonc with KV namespace IDs from environment variables.');
+    console.log('✅ Successfully updated wrangler.jsonc with environment variables.');
     return true;
   } catch (error) {
     console.error(`❌ Error updating wrangler.jsonc: ${error.message}`);
@@ -102,12 +111,9 @@ function updateWranglerConfig() {
 // Main execution
 try {
   // Update wrangler.jsonc file
-  const wranglerUpdated = updateWranglerConfig();
+  const wranglerUpdated = updateWranglerEnv();
 
-  // Update .dev.vars file
-  const devVarsUpdated = updateDevVars();
-
-  if (wranglerUpdated && devVarsUpdated) {
+  if (wranglerUpdated) {
     console.log('\n🎉 All configuration files have been successfully updated!');
   } else {
     console.warn('\n⚠️ Some configuration files could not be updated. Please check the errors above.');

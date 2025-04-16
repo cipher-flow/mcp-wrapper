@@ -6,6 +6,13 @@
         "port": 3000,
         "local_protocol": "http"
     },
+    "vars": {
+        "INVITE_CODE_LENGTH": 12,
+        "INVITE_CODE_MAX_SERVERS": 100,
+        "INVITE_CODE_MAX_ACCESSES": 10000,
+        "INFURA_PROJECT_ID": "",
+        "ETHERSCAN_API_KEY": ""
+    },
     "observability": {
         "logs": {
             "enabled": true
@@ -43,7 +50,9 @@
     "migrations": [
         {
             "tag": "v1",
-            "new_sqlite_classes": ["McpObject"]
+            "new_sqlite_classes": [
+                "McpObject"
+            ]
         }
     ]
 }

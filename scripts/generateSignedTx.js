@@ -31,8 +31,16 @@ async function createSignedTx(network, txDataJson) {
   const privateKey = process.env.PRIVATE_KEY;
   if (!privateKey) throw new Error('PRIVATE_KEY not found in .env');
 
-  const mainnetRpc = `https://mainnet.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
-  const testnetRpc = `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
+  let mainnetRpc;
+  let testnetRpc;
+  if (env.INFURA_PROJECT_ID) {
+    mainnetRpc = `https://mainnet.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
+    testnetRpc = `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`;
+  } else {
+    mainnetRpc = "https://ethereum-rpc.publicnode.com"
+    testnetRpc = "https://ethereum-sepolia-rpc.publicnode.com"
+  }
+
   const provider = network === 'mainnet' ? new ethers.JsonRpcProvider(mainnetRpc) : new ethers.JsonRpcProvider(testnetRpc);
 
   const wallet = new ethers.Wallet(privateKey, provider);
