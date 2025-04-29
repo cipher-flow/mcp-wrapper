@@ -587,10 +587,24 @@ app.get('/api/fetch-abi', async (c) => {
     return c.json({ error: 'Etherscan API key not configured' }, 500);
   }
 
+  // Map network to chainId for Etherscan V2 API
+  const networkToChainId = {
+    'mainnet': 1,
+    'sepolia': 11155111,
+    'arbitrum': 42161,
+    'optimism': 10,
+    'base': 8453,
+    'polygon': 137
+  };
+
   try {
-    log.info('Fetching ABI from Etherscan', { ...context, address });
+    const chainId = networkToChainId[network] || 1; // Default to mainnet if network not found
+
+    log.info('Fetching ABI from Etherscan V2 API', { ...context, address, network, chainId });
+
+    // Use Etherscan V2 API with chainId parameter
     const response = await fetch(
-      `https://api${network === 'mainnet' ? '' : '-' + network}.etherscan.io/api?module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
+      `https://api.etherscan.io/v2/api?chainid=${chainId}&module=contract&action=getabi&address=${address}&apikey=${etherscanApiKey}`
     );
     const data = await response.json();
 
@@ -601,15 +615,15 @@ app.get('/api/fetch-abi', async (c) => {
 
     try {
       const abi = JSON.parse(data.result);
-      log.info('Successfully fetched ABI from Etherscan', { ...context, address });
+      log.info('Successfully fetched ABI from Etherscan V2 API', { ...context, address, chainId });
       return c.json({ abi });
     } catch (e) {
-      log.error('Invalid ABI format received from Etherscan', { ...context, error: e.message });
-      return c.json({ error: 'Invalid ABI format received from Etherscan' }, 400);
+      log.error('Invalid ABI format received from Etherscan V2 API', { ...context, error: e.message, chainId });
+      return c.json({ error: 'Invalid ABI format received from Etherscan V2 API' }, 400);
     }
   } catch (error) {
-    log.error('Failed to fetch ABI from Etherscan', { ...context, error: error.message, stack: error.stack });
-    return c.json({ error: 'Failed to fetch ABI from Etherscan' }, 500);
+    log.error('Failed to fetch ABI from Etherscan V2 API', { ...context, error: error.message, stack: error.stack, network, chainId: networkToChainId[network] || 1 });
+    return c.json({ error: 'Failed to fetch ABI from Etherscan V2 API' }, 500);
   }
 });
 

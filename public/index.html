@@ -82,6 +82,10 @@
                     <select id="networkSelect" style="margin-top: 5px; width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ced4da;">
                         <option value="mainnet">Ethereum Mainnet</option>
                         <option value="sepolia">Sepolia Testnet</option>
+                        <option value="arbitrum">Arbitrum</option>
+                        <option value="optimism">Optimism</option>
+                        <option value="base">Base</option>
+                        <option value="polygon">Polygon</option>
                     </select>
                     <small style="color: #6c757d;">Or paste ABI manually below</small>
                 </div>
@@ -179,19 +183,25 @@
 
             try {
                 const network = document.getElementById('networkSelect').value;
+                console.log(`Fetching ABI for network: ${network}`);
+
                 const response = await fetch(`/api/fetch-abi?address=${encodeURIComponent(contractAddress)}&network=${network}`);
                 if (!response.ok) {
                     const errorText = await response.text();
                     throw new Error(`HTTP error! Status: ${response.status}\nResponse: ${errorText}`);
                 }
+
                 const data = await response.json();
                 if (data.error) {
-                    alert(data.error);
+                    alert(`Error from Etherscan V2 API: ${data.error}`);
                     return;
                 }
+
                 abiInput.value = JSON.stringify(data.abi, null, 2);
+                console.log(`Successfully fetched ABI from ${network} network`);
             } catch (error) {
-                alert(`Failed to fetch ABI:\n${error.message}`);
+                alert(`Failed to fetch ABI from Etherscan V2 API:\n${error.message}`);
+                console.error('ABI fetch error:', error);
             }
         });
 
